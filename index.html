@@ -5,57 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner Gudang Real-Time</title>
     <style>
-        body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            background: linear-gradient(135deg, #3db597 0%, #156d53 100%); 
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            background-color: #ffffff;
-            width: 100%;
-            max-width: 500px;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.2);
-            box-sizing: border-box;
-        }
-        .header-status { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 20px; 
-            border-bottom: 2px solid #e0e0e0; 
-            padding-bottom: 10px;
-        }
-        .header-status h2 {
-            margin: 0;
-            color: #156d53;
-            font-size: 20px;
-        }
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #3db597 0%, #156d53 100%); min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; }
+        .container { background-color: #ffffff; width: 100%; max-width: 500px; padding: 25px; border-radius: 12px; box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.2); box-sizing: border-box; margin-top: 10px; }
+        .header-status { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+        .header-status h2 { margin: 0; color: #156d53; font-size: 20px; }
         .form-group { margin-bottom: 15px; }
         label { font-weight: 600; display: block; margin-bottom: 6px; color: #333; font-size: 14px;}
-        input, select { 
-            width: 100%; 
-            padding: 12px; 
-            box-sizing: border-box; 
-            font-size: 15px; 
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
+        input, select { width: 100%; padding: 12px; box-sizing: border-box; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; outline: none; transition: border-color 0.3s; }
         input:focus, select:focus { border-color: #3db597; }
         input[readonly] { background-color: #f8f9fa; color: #555; }
-        
         button { border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         button.sync-btn { background-color: #e0f2ec; color: #156d53; padding: 8px 12px; font-size: 13px; }
         button.save-btn { background-color: #3db597; color: white; width: 100%; font-size: 16px; padding: 14px; margin-top: 10px; }
         #statusKoneksi { font-size: 12px; color: #666; margin-top: 0; margin-bottom: 15px; }
+        
+        /* Gaya untuk Histori */
+        .histori-container { margin-top: 30px; border-top: 2px dashed #ccc; padding-top: 20px; }
+        .histori-container h3 { margin: 0 0 15px 0; color: #333; font-size: 16px; }
+        .histori-item { background: #f9f9f9; border: 1px solid #e0e0e0; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .histori-detail { font-size: 13px; color: #444; width: 75%; }
+        .histori-detail strong { color: #156d53; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+        .edit-btn { background-color: #f39c12; color: white; padding: 6px 12px; font-size: 12px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -70,19 +40,21 @@
         <div class="form-group">
             <label>Nama PIC (Auditor):</label>
             <select id="picAuditor">
-                <option value="Tim A">Tim A</option>
-                <option value="Tim B">Tim B</option>
+                <option value="">Pilih PIC...</option>
+                <!-- Opsi diisi otomatis dari Spreadsheet PIC -->
             </select>
         </div>
 
         <div class="form-group">
             <label>Kode Barang / Barcode:</label>
-            <input type="text" id="kodeBarang" placeholder="Arahkan kursor & Scan di sini..." autofocus>
+            <input type="text" id="kodeBarang" placeholder="Scan Barcode..." autofocus onchange="cariBarangInstan()">
         </div>
 
         <div class="form-group">
-            <label>Nama Barang:</label>
-            <input type="text" id="namaBarang" readonly placeholder="Otomatis muncul">
+            <label>Nama Barang (Ketik Manual jika Barcode Gagal):</label>
+            <!-- Datalist untuk fitur Autocomplete -->
+            <input list="listNamaBarang" id="namaBarang" placeholder="Cari nama barang..." onchange="cariDariNama()">
+            <datalist id="listNamaBarang"></datalist>
         </div>
 
         <div class="form-group">
@@ -97,21 +69,30 @@
 
         <p id="statusInput" style="color: dimgray; font-size: 13px; font-weight: bold; margin-bottom: 15px;"></p>
 
-        <button class="save-btn" onclick="kirimDataRealTime()">Simpan & Kirim</button>
+        <button id="btnSubmit" class="save-btn" onclick="kirimDataRealTime()">Simpan & Kirim</button>
+
+        <!-- Area Histori Input -->
+        <div class="histori-container">
+            <h3>Histori Input (Sesi Ini)</h3>
+            <div id="listHistori">
+                <!-- Data histori akan muncul di sini -->
+            </div>
+        </div>
     </div>
 
     <script>
-        // GANTI TULISAN DI BAWAH INI DENGAN URL WEB APP GAS ANDA
-        const URL_GAS = "https://script.google.com/macros/s/AKfycbxyIG8C5uh9zMS90C7fhIhmu1INWaaMczTf2yYoDPD-rGokr2ph26vfMrx-NQ-DtoxI7Q/exec";
+        const URL_GAS = "https://script.google.com/macros/s/AKfycbxpNBRGUpKqmurfoOi3EWHA7E8WB62hiZqkjN7Vj7nZopKycIJ7APHSMBmFVvx2NSUj-Q/exec";
+        
+        let modeEditId = null; // Penanda jika tim sedang melakukan edit data
 
-        // Fitur Sinkronisasi Otomatis saat aplikasi dibuka
         window.onload = function() {
             tarikDataMaster();
+            renderHistori();
         };
 
         async function tarikDataMaster() {
             let statusText = document.getElementById('statusKoneksi');
-            statusText.innerText = "Mengunduh master data terbaru...";
+            statusText.innerText = "Mengunduh master data & list PIC...";
             statusText.style.color = "#007bff";
             
             try {
@@ -119,7 +100,23 @@
                 let result = await response.json();
                 
                 if (result.status === "success") {
+                    // Simpan master barang
                     localStorage.setItem('dbMasterBarang', JSON.stringify(result.data));
+                    
+                    // Isi Autocomplete Nama Barang
+                    let dataListHTML = '';
+                    result.data.forEach(b => {
+                        dataListHTML += `<option value="${b.nama}">`;
+                    });
+                    document.getElementById('listNamaBarang').innerHTML = dataListHTML;
+
+                    // Isi Dropdown PIC
+                    let picDropdown = document.getElementById('picAuditor');
+                    picDropdown.innerHTML = '<option value="">Pilih PIC...</option>'; // Reset
+                    result.pic.forEach(p => {
+                        picDropdown.innerHTML += `<option value="${p}">${p}</option>`;
+                    });
+
                     statusText.innerText = "Master Data Siap (" + result.data.length + " barang).";
                     statusText.style.color = "#156d53";
                 }
@@ -129,11 +126,11 @@
             }
         }
 
+        // Pencarian jika scan Barcode
         document.getElementById('kodeBarang').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault(); 
                 cariBarangInstan();
-                document.getElementById('stokFisik').focus(); 
             }
         });
 
@@ -147,12 +144,33 @@
             if (barangDitemukan) {
                 document.getElementById('namaBarang').value = barangDitemukan.nama;
                 document.getElementById('sisaTarget').value = barangDitemukan.kuantitas;
-                document.getElementById('statusInput').innerText = "✅ Barang ditemukan. Silakan input fisik.";
+                document.getElementById('statusInput').innerText = "✅ Barcode dikenali.";
                 document.getElementById('statusInput').style.color = "#156d53";
+                document.getElementById('stokFisik').focus();
             } else {
-                document.getElementById('namaBarang').value = "TIDAK DITEMUKAN";
-                document.getElementById('sisaTarget').value = "0";
                 document.getElementById('statusInput').innerText = "❌ Barcode tidak ada di database!";
+                document.getElementById('statusInput').style.color = "red";
+            }
+        }
+
+        // Pencarian jika ketik manual di Nama Barang (Autocomplete)
+        function cariDariNama() {
+            let namaInput = document.getElementById('namaBarang').value.trim();
+            if (!namaInput) return;
+
+            let dbLokal = JSON.parse(localStorage.getItem('dbMasterBarang')) || [];
+            let barangDitemukan = dbLokal.find(b => b.nama === namaInput);
+
+            if (barangDitemukan) {
+                document.getElementById('kodeBarang').value = barangDitemukan.kode;
+                document.getElementById('sisaTarget').value = barangDitemukan.kuantitas;
+                document.getElementById('statusInput').innerText = "✅ Barang dipilih manual.";
+                document.getElementById('statusInput').style.color = "#156d53";
+                document.getElementById('stokFisik').focus();
+            } else {
+                document.getElementById('kodeBarang').value = "";
+                document.getElementById('sisaTarget').value = "0";
+                document.getElementById('statusInput').innerText = "❌ Nama barang tidak valid!";
                 document.getElementById('statusInput').style.color = "red";
             }
         }
@@ -164,15 +182,20 @@
             let stokSistem = document.getElementById('sisaTarget').value;
             let stokFisik = document.getElementById('stokFisik').value;
 
-            if(!kode || !stokFisik || nama === "TIDAK DITEMUKAN") {
-                return alert("Mohon lengkapi data dengan benar sebelum menyimpan!");
+            if(!pic || !kode || !stokFisik) {
+                return alert("Mohon lengkapi PIC, Barang, dan Fisik sebelum menyimpan!");
             }
 
             let statusText = document.getElementById('statusKoneksi');
-            statusText.innerText = "Mengirim data ke server...";
+            statusText.innerText = modeEditId ? "Mengupdate data..." : "Mengirim data baru...";
             statusText.style.color = "#e67e22";
 
+            let actionType = modeEditId ? "edit" : "insert";
+            let uniqueId = modeEditId ? modeEditId : "ID-" + Date.now(); // Buat ID unik berdasarkan waktu
+
             let payloadData = {
+                action: actionType,
+                id: uniqueId,
                 waktu: new Date().toLocaleString('id-ID'),
                 pic: pic,
                 kode: kode,
@@ -193,17 +216,87 @@
                     statusText.innerText = "✅ Data terkirim!";
                     statusText.style.color = "#156d53";
                     
-                    document.getElementById('kodeBarang').value = '';
-                    document.getElementById('namaBarang').value = '';
-                    document.getElementById('sisaTarget').value = '';
-                    document.getElementById('stokFisik').value = '';
-                    document.getElementById('statusInput').innerText = '';
-                    document.getElementById('kodeBarang').focus();
+                    simpanKeHistori(payloadData);
+                    resetForm();
                 }
             } catch (error) {
                 statusText.innerText = "❌ Gagal kirim. Internet terputus!";
                 statusText.style.color = "red";
             }
+        }
+
+        function simpanKeHistori(data) {
+            let histori = JSON.parse(localStorage.getItem('historiAudit')) || [];
+            
+            if (data.action === "edit") {
+                // Timpa data lama di histori
+                let index = histori.findIndex(h => h.id === data.id);
+                if (index !== -1) histori[index] = data;
+            } else {
+                // Masukkan data baru ke urutan teratas
+                histori.unshift(data); 
+            }
+            
+            localStorage.setItem('historiAudit', JSON.stringify(histori));
+            renderHistori();
+        }
+
+        function renderHistori() {
+            let histori = JSON.parse(localStorage.getItem('historiAudit')) || [];
+            let listHTML = '';
+            
+            if(histori.length === 0) {
+                listHTML = "<p style='font-size:12px; color:#888;'>Belum ada inputan di sesi ini.</p>";
+            } else {
+                histori.forEach(h => {
+                    listHTML += `
+                    <div class="histori-item">
+                        <div class="histori-detail">
+                            <strong>${h.nama}</strong>
+                            Qty: ${h.stokFisik} | ${h.waktu.split(' ')[1]}
+                        </div>
+                        <button class="edit-btn" onclick="muatDataEdit('${h.id}')">Edit</button>
+                    </div>`;
+                });
+            }
+            document.getElementById('listHistori').innerHTML = listHTML;
+        }
+
+        function muatDataEdit(id) {
+            let histori = JSON.parse(localStorage.getItem('historiAudit')) || [];
+            let dataEdit = histori.find(h => h.id === id);
+            
+            if(dataEdit) {
+                document.getElementById('picAuditor').value = dataEdit.pic;
+                document.getElementById('kodeBarang').value = dataEdit.kode;
+                document.getElementById('namaBarang').value = dataEdit.nama;
+                document.getElementById('sisaTarget').value = dataEdit.stokSistem;
+                document.getElementById('stokFisik').value = dataEdit.stokFisik;
+                
+                modeEditId = id; // Aktifkan mode edit
+                
+                document.getElementById('btnSubmit').innerText = "Update Data (Edit)";
+                document.getElementById('btnSubmit').style.backgroundColor = "#f39c12"; // Berubah oranye agar tim sadar
+                document.getElementById('statusInput').innerText = "⚠️ Mode Edit Aktif.";
+                document.getElementById('statusInput').style.color = "#f39c12";
+                
+                // Scroll ke atas
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('kodeBarang').value = '';
+            document.getElementById('namaBarang').value = '';
+            document.getElementById('sisaTarget').value = '';
+            document.getElementById('stokFisik').value = '';
+            document.getElementById('statusInput').innerText = '';
+            
+            modeEditId = null; // Matikan mode edit
+            document.getElementById('btnSubmit').innerText = "Simpan & Kirim";
+            document.getElementById('btnSubmit').style.backgroundColor = "#3db597";
+            
+            document.getElementById('kodeBarang').focus();
         }
     </script>
 </body>
