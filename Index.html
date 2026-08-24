@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Gudang Real-Time</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #3db597 0%, #156d53 100%); 
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background-color: #ffffff;
+            width: 100%;
+            max-width: 500px;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.2);
+            box-sizing: border-box;
+        }
+        .header-status { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 20px; 
+            border-bottom: 2px solid #e0e0e0; 
+            padding-bottom: 10px;
+        }
+        .header-status h2 {
+            margin: 0;
+            color: #156d53;
+            font-size: 20px;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { font-weight: 600; display: block; margin-bottom: 6px; color: #333; font-size: 14px;}
+        input, select { 
+            width: 100%; 
+            padding: 12px; 
+            box-sizing: border-box; 
+            font-size: 15px; 
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus { border-color: #3db597; }
+        input[readonly] { background-color: #f8f9fa; color: #555; }
+        
+        button { border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button.sync-btn { background-color: #e0f2ec; color: #156d53; padding: 8px 12px; font-size: 13px; }
+        button.save-btn { background-color: #3db597; color: white; width: 100%; font-size: 16px; padding: 14px; margin-top: 10px; }
+        #statusKoneksi { font-size: 12px; color: #666; margin-top: 0; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-status">
+            <h2>Status Gudang</h2>
+            <button class="sync-btn" onclick="tarikDataMaster()">🔄 Sync Master</button>
+        </div>
+        <p id="statusKoneksi">Menyiapkan data...</p>
+
+        <div class="form-group">
+            <label>Nama PIC (Auditor):</label>
+            <select id="picAuditor">
+                <option value="Tim A">Tim A</option>
+                <option value="Tim B">Tim B</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Kode Barang / Barcode:</label>
+            <input type="text" id="kodeBarang" placeholder="Arahkan kursor & Scan di sini..." autofocus>
+        </div>
+
+        <div class="form-group">
+            <label>Nama Barang:</label>
+            <input type="text" id="namaBarang" readonly placeholder="Otomatis muncul">
+        </div>
+
+        <div class="form-group">
+            <label>Sisa Target (Sistem):</label>
+            <input type="number" id="sisaTarget" readonly placeholder="0">
+        </div>
+
+        <div class="form-group">
+            <label>Stok Fisik Ditemukan:</label>
+            <input type="number" id="stokFisik" placeholder="Ketik jumlah fisik...">
+        </div>
+
+        <p id="statusInput" style="color: dimgray; font-size: 13px; font-weight: bold; margin-bottom: 15px;"></p>
+
+        <button class="save-btn" onclick="kirimDataRealTime()">Simpan & Kirim</button>
+    </div>
+
+    <script>
+        // GANTI TULISAN DI BAWAH INI DENGAN URL WEB APP GAS ANDA
+        const URL_GAS = "https://script.google.com/macros/s/AKfycbxyIG8C5uh9zMS90C7fhIhmu1INWaaMczTf2yYoDPD-rGokr2ph26vfMrx-NQ-DtoxI7Q/exec";
+
+        // Fitur Sinkronisasi Otomatis saat aplikasi dibuka
+        window.onload = function() {
+            tarikDataMaster();
+        };
+
+        async function tarikDataMaster() {
+            let statusText = document.getElementById('statusKoneksi');
+            statusText.innerText = "Mengunduh master data terbaru...";
+            statusText.style.color = "#007bff";
+            
+            try {
+                let response = await fetch(URL_GAS);
+                let result = await response.json();
+                
+                if (result.status === "success") {
+                    localStorage.setItem('dbMasterBarang', JSON.stringify(result.data));
+                    statusText.innerText = "Master Data Siap (" + result.data.length + " barang).";
+                    statusText.style.color = "#156d53";
+                }
+            } catch (error) {
+                statusText.innerText = "Gagal mengunduh data. Cek koneksi!";
+                statusText.style.color = "red";
+            }
+        }
+
+        document.getElementById('kodeBarang').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault(); 
+                cariBarangInstan();
+                document.getElementById('stokFisik').focus(); 
+            }
+        });
+
+        function cariBarangInstan() {
+            let kodeInput = document.getElementById('kodeBarang').value.trim();
+            if (!kodeInput) return;
+
+            let dbLokal = JSON.parse(localStorage.getItem('dbMasterBarang')) || [];
+            let barangDitemukan = dbLokal.find(b => b.kode === kodeInput);
+
+            if (barangDitemukan) {
+                document.getElementById('namaBarang').value = barangDitemukan.nama;
+                document.getElementById('sisaTarget').value = barangDitemukan.kuantitas;
+                document.getElementById('statusInput').innerText = "✅ Barang ditemukan. Silakan input fisik.";
+                document.getElementById('statusInput').style.color = "#156d53";
+            } else {
+                document.getElementById('namaBarang').value = "TIDAK DITEMUKAN";
+                document.getElementById('sisaTarget').value = "0";
+                document.getElementById('statusInput').innerText = "❌ Barcode tidak ada di database!";
+                document.getElementById('statusInput').style.color = "red";
+            }
+        }
+
+        async function kirimDataRealTime() {
+            let pic = document.getElementById('picAuditor').value;
+            let kode = document.getElementById('kodeBarang').value;
+            let nama = document.getElementById('namaBarang').value;
+            let stokSistem = document.getElementById('sisaTarget').value;
+            let stokFisik = document.getElementById('stokFisik').value;
+
+            if(!kode || !stokFisik || nama === "TIDAK DITEMUKAN") {
+                return alert("Mohon lengkapi data dengan benar sebelum menyimpan!");
+            }
+
+            let statusText = document.getElementById('statusKoneksi');
+            statusText.innerText = "Mengirim data ke server...";
+            statusText.style.color = "#e67e22";
+
+            let payloadData = {
+                waktu: new Date().toLocaleString('id-ID'),
+                pic: pic,
+                kode: kode,
+                nama: nama,
+                stokSistem: stokSistem,
+                stokFisik: stokFisik
+            };
+
+            try {
+                let response = await fetch(URL_GAS, {
+                    method: 'POST',
+                    body: JSON.stringify(payloadData),
+                });
+                
+                let result = await response.json();
+                
+                if (result.status === "success") {
+                    statusText.innerText = "✅ Data terkirim!";
+                    statusText.style.color = "#156d53";
+                    
+                    document.getElementById('kodeBarang').value = '';
+                    document.getElementById('namaBarang').value = '';
+                    document.getElementById('sisaTarget').value = '';
+                    document.getElementById('stokFisik').value = '';
+                    document.getElementById('statusInput').innerText = '';
+                    document.getElementById('kodeBarang').focus();
+                }
+            } catch (error) {
+                statusText.innerText = "❌ Gagal kirim. Internet terputus!";
+                statusText.style.color = "red";
+            }
+        }
+    </script>
+</body>
+</html>
