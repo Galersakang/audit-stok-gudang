@@ -27,17 +27,26 @@
         button.btn-submit { background-color: #3db597; color: white; margin-top: 10px; padding: 14px; font-size: 16px; }
         button.btn-submit:disabled { background-color: #ccc; cursor: not-allowed; }
         button.btn-spv { background-color: #156d53; color: white; margin-top: 10px; }
-        button.btn-hide { width: auto; padding: 4px 10px; font-size: 12px; background: #e0e0e0; color: #333; float: right; border-radius: 4px; }
+        
+        /* Tombol Toggle Simbol ∧ / ∨ */
+        button.btn-toggle-symbol { width: 32px; height: 32px; padding: 0; font-size: 16px; background: #e8f5e9; color: #156d53; float: right; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1; border: 1px solid #c8e6c9; }
+        button.btn-toggle-symbol:hover { background: #c8e6c9; }
+        
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 150; display: none; }
         .overlay.active { display: block; }
         .status-msg { font-size: 13px; font-weight: bold; margin-bottom: 10px; margin-top: -5px; }
         
         /* Histori Styling */
         .histori-container { margin-top: 25px; border-top: 2px dashed #ccc; padding-top: 15px; display: none; }
-        .histori-item { background: #f9f9f9; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .histori-detail { font-size: 12px; color: #555; width: 65%; }
-        .histori-detail strong { color: #156d53; display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
-        .histori-actions { display: flex; gap: 5px; }
+        .search-histori-box { margin-bottom: 12px; position: relative; }
+        .search-histori-box input { padding: 9px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #bbb; background-color: #fafafa; }
+        .histori-item { background: #f9f9f9; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        
+        /* Perbaikan: Nama Barang tidak terpotong */
+        .histori-detail { font-size: 12px; color: #555; flex: 1; }
+        .histori-detail strong { color: #156d53; display: block; font-size: 13px; line-height: 1.4; word-break: break-word; white-space: normal; margin-bottom: 4px; }
+        
+        .histori-actions { display: flex; flex-direction: row; gap: 5px; flex-shrink: 0; }
         .btn-edit { background: #f39c12; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
         .btn-delete { background: #e74c3c; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
     </style>
@@ -79,7 +88,7 @@
         <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <label style="color: #d35400; margin: 0;">1. Kunci Sesi Audit</label>
-                <button class="btn-hide" onclick="toggleSesiBox()">Sembunyikan</button>
+                <button id="btnToggleSymbol" class="btn-toggle-symbol" onclick="toggleSesiBox()" title="Sembunyikan/Tampilkan">∧</button>
             </div>
             
             <div id="boxSesi">
@@ -88,7 +97,6 @@
                 <button id="btnLock" class="btn-lock" onclick="kunciSesi()">🔒 Tarik Data & Kunci</button>
                 <p id="lockStatus" class="status-msg" style="margin-top: 10px;"></p>
             </div>
-            <!-- Indikator ringkas jika disembunyikan -->
             <p id="sesiRingkas" style="display:none; font-size:13px; font-weight:bold; color:#27ae60; margin:0;">✅ Sesi Terkunci.</p>
         </div>
 
@@ -122,31 +130,39 @@
         <!-- SESI 3: HISTORI INPUT -->
         <div class="histori-container" id="areaHistori">
             <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
+            
+            <!-- Kotak Pencarian Histori -->
+            <div class="search-histori-box">
+                <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
+            </div>
+            
             <div id="listHistori"></div>
         </div>
     </div>
 
     <script>
         const URL_GAS = "https://script.google.com/macros/s/AKfycbxpNBRGUpKqmurfoOi3EWHA7E8WB62hiZqkjN7Vj7nZopKycIJ7APHSMBmFVvx2NSUj-Q/exec";
-        let editModeId = null; // Penanda jika sedang mengedit data histori
+        let editModeId = null;
 
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
             document.getElementById('overlay').classList.toggle('active');
         }
 
-        // FUNGSI SEMBUNYIKAN KOTAK SESI
         function toggleSesiBox() {
             let box = document.getElementById('boxSesi');
             let ringkas = document.getElementById('sesiRingkas');
+            let btnSymbol = document.getElementById('btnToggleSymbol');
             let isLocked = document.getElementById('btnLock').disabled;
 
             if (box.style.display === "none") {
                 box.style.display = "block";
                 ringkas.style.display = "none";
+                btnSymbol.innerText = "∧";
             } else {
                 box.style.display = "none";
                 if(isLocked) ringkas.style.display = "block";
+                btnSymbol.innerText = "∨";
             }
         }
 
@@ -213,7 +229,6 @@
                 if(result.status === 'success') {
                     localStorage.setItem('masterJob', JSON.stringify(result.master));
                     
-                    // Isi Datalist untuk Autocomplete Manual
                     let dataListHTML = '';
                     result.master.forEach(b => {
                         dataListHTML += `<option value="${b.nama}">`;
@@ -232,9 +247,8 @@
                     areaScan.style.opacity = "1"; areaScan.style.pointerEvents = "auto";
                     
                     document.getElementById('areaHistori').style.display = "block";
-                    renderHistori(); // Muat histori jika ada
+                    renderHistori();
                     
-                    // Otomatis sembunyikan kotak sesi untuk menghemat ruang
                     setTimeout(toggleSesiBox, 1000);
                     document.getElementById('kodeBarang').focus();
                 } else {
@@ -325,7 +339,7 @@
         }
 
         // ==========================================
-        // FITUR HISTORI (EDIT & DELETE)
+        // FITUR HISTORI (FILTER, EDIT & DELETE)
         // ==========================================
         function simpanHistoriLokal(data, actionType) {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
@@ -335,27 +349,40 @@
                 let idx = histori.findIndex(h => h.id === data.id);
                 if(idx !== -1) histori[idx] = data;
             } else {
-                histori.unshift(data); // Masukkan di urutan paling atas
+                histori.unshift(data);
             }
             
             localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
             renderHistori();
         }
 
-        function renderHistori() {
+        function filterHistori() {
+            let keyword = document.getElementById('cariHistori').value.toLowerCase().trim();
+            renderHistori(keyword);
+        }
+
+        function renderHistori(keyword = "") {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
-            let html = '';
             
+            if(keyword !== "") {
+                histori = histori.filter(h => 
+                    h.nama.toLowerCase().includes(keyword) || 
+                    h.kode.toLowerCase().includes(keyword)
+                );
+            }
+
+            let html = '';
             if(histori.length === 0) {
-                html = "<p style='font-size:12px; color:#888;'>Belum ada inputan.</p>";
+                html = "<p style='font-size:12px; color:#888;'>Tidak ada data histori yang cocok.</p>";
             } else {
                 histori.forEach(h => {
                     html += `
                     <div class="histori-item" id="item-${h.id}">
                         <div class="histori-detail">
                             <strong>${h.nama}</strong>
-                            Qty Fisik: <span style="color:#d35400; font-weight:bold;">${h.stokFisik}</span> | ${h.waktu.split(' ')[1]}
+                            <span>Kode: ${h.kode}</span><br>
+                            <span>Qty Fisik: <strong style="color:#d35400; display:inline;">${h.stokFisik}</strong> | ${h.waktu.split(' ')[1]}</span>
                         </div>
                         <div class="histori-actions">
                             <button class="btn-edit" onclick="masukModeEdit('${h.id}')">Edit</button>
@@ -404,11 +431,10 @@
                 let result = await res.json();
                 
                 if(result.status === 'success') {
-                    // Hapus dari local storage
                     let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
                     histori = histori.filter(h => h.id !== id);
                     localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
-                    renderHistori();
+                    filterHistori();
                 } else {
                     alert("Gagal menghapus: " + result.message);
                     btnDel.innerText = "Hapus"; btnDel.disabled = false;
