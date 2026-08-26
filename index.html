@@ -67,7 +67,6 @@
     <div class="sidebar" id="sidebar">
         <span class="close-btn" onclick="toggleSidebar()">✖</span>
         
-        <!-- BAGIAN STAFF: CEK ITEM SELISIH -->
         <h3 style="margin-top: 10px;">Menu Staff</h3>
         <p style="margin-top:-5px;">Tarik data dari Job ID yang terkunci di layar utama.</p>
         <button id="btnMuatSelisih" class="btn-spv" style="background:#f39c12; color:white; margin-top:0;" onclick="muatDataSelisih()">🔄 Cek Item Selisih</button>
@@ -89,7 +88,6 @@
 
         <hr style="border-top: 1px solid #eee; margin: 25px 0;">
 
-        <!-- BAGIAN SPV: UPLOAD DATA -->
         <h3>Panel SPV (Upload Data)</h3>
         <div id="spvPinArea">
             <input type="password" id="spvPin" placeholder="Ketik PIN SPV..." class="form-group" style="width:100%; padding:12px; box-sizing:border-box;">
@@ -111,7 +109,6 @@
     <!-- Container Utama -->
     <div class="container">
         
-        <!-- SESI 1: LOCK JOB ID -->
         <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <label style="color: #d35400; margin: 0;">1. Kunci Sesi Audit</label>
@@ -127,41 +124,33 @@
             <p id="sesiRingkas" style="display:none; font-size:13px; font-weight:bold; color:#27ae60; margin:0;">✅ Sesi Terkunci.</p>
         </div>
 
-        <!-- SESI 2: INPUT SCAN & MANUAL -->
         <div id="areaScan" style="opacity: 0.4; pointer-events: none;">
             <div class="form-group">
                 <label>2. Scan Barcode Barang:</label>
                 <input type="text" id="kodeBarang" placeholder="Scan Barcode..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()">
             </div>
-
             <div class="form-group">
                 <label>Atau Ketik Nama Barang (Pilih dari List):</label>
                 <input list="listNamaBarang" id="namaBarang" placeholder="Ketik nama barang..." onchange="pencarianNama()">
                 <datalist id="listNamaBarang"></datalist>
             </div>
-
             <div class="form-group">
                 <label>Sisa Target (Sistem):</label>
                 <input type="number" id="sisaTarget" readonly placeholder="0">
             </div>
-
             <div class="form-group">
                 <label>Stok Fisik Ditemukan:</label>
                 <input type="number" id="stokFisik" placeholder="Ketik jumlah fisik...">
             </div>
-
             <p id="statusScan" class="status-msg"></p>
             <button id="btnSubmit" class="btn-submit" onclick="prosesSimpanData()">Kirim Data Fisik</button>
         </div>
 
-        <!-- SESI 3: HISTORI INPUT -->
         <div class="histori-container" id="areaHistori">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3 style="margin: 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
-                <!-- Fitur Hide & Seek Histori -->
                 <button id="btnToggleHistori" class="btn-toggle-symbol" onclick="toggleHistoriBox()" title="Sembunyikan/Tampilkan">∧</button>
             </div>
-            
             <div id="boxHistori">
                 <div class="search-histori-box">
                     <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
@@ -180,7 +169,6 @@
             document.getElementById('overlay').classList.toggle('active');
         }
 
-        // TOGGLE SESI BOX
         function toggleSesiBox() {
             let box = document.getElementById('boxSesi');
             let ringkas = document.getElementById('sesiRingkas');
@@ -198,7 +186,6 @@
             }
         }
 
-        // TOGGLE HISTORI BOX (Fitur Baru)
         function toggleHistoriBox() {
             let box = document.getElementById('boxHistori');
             let btnSymbol = document.getElementById('btnToggleHistori');
@@ -212,9 +199,6 @@
             }
         }
 
-        // ==========================================
-        // FITUR BARU: MUAT DATA ITEM SELISIH DARI BACKEND
-        // ==========================================
         async function muatDataSelisih() {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let isLocked = document.getElementById('btnLock').disabled;
@@ -265,15 +249,13 @@
         }
 
         function klikItemSelisih(kode) {
-            toggleSidebar(); // Tutup sidebar otomatis
+            toggleSidebar(); 
             document.getElementById('kodeBarang').value = kode;
-            pencarianBarcode(); // Trigger otomatis cari nama dan target
+            pencarianBarcode(); 
             
-            // Buka area histori jika sedang tertutup (agar fokus layar turun ke form)
             let boxHistori = document.getElementById('boxHistori');
             if(boxHistori.style.display === "none") toggleHistoriBox();
         }
-
 
         // SPV FUNCTIONS
         async function verifikasiPIN() {
@@ -330,13 +312,19 @@
             let status = document.getElementById('lockStatus');
             
             if(!jobId || !pic) return status.innerText = "Isi Job ID dan PIC!", status.style.color = "red";
-            status.innerText = "Mengunduh Data..."; status.style.color = "#f39c12";
+            status.innerText = "Mengunduh Data Server..."; status.style.color = "#f39c12";
 
             try {
-                let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_job_data', jobId: jobId }) });
+                // UPDATE: Mengirimkan PIC untuk menarik sinkronisasi histori dari server
+                let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_job_data', jobId: jobId, pic: pic }) });
                 let result = await res.json();
+                
                 if(result.status === 'success') {
+                    // Simpan data target
                     localStorage.setItem('masterJob', JSON.stringify(result.master));
+                    
+                    // SINKRONISASI SERVER KE LOKAL
+                    localStorage.setItem('histori_' + jobId, JSON.stringify(result.history));
                     
                     let dataListHTML = '';
                     result.master.forEach(b => {
