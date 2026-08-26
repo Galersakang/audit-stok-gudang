@@ -38,6 +38,14 @@
         .histori-container { margin-top: 25px; border-top: 2px dashed #ccc; padding-top: 15px; display: none; }
         .search-histori-box { margin-bottom: 12px; position: relative; }
         .search-histori-box input { padding: 9px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #bbb; background-color: #fafafa; }
+        
+        /* UPDATE: Fitur Scroll pada List Histori */
+        #listHistori { max-height: 260px; overflow-y: auto; padding-right: 5px; }
+        #listHistori::-webkit-scrollbar { width: 5px; }
+        #listHistori::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        #listHistori::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        #listHistori::-webkit-scrollbar-thumb:hover { background: #999; }
+
         .histori-item { background: #f9f9f9; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
         .histori-detail { font-size: 12px; color: #555; flex: 1; }
         .histori-detail strong { color: #156d53; display: block; font-size: 13px; line-height: 1.4; word-break: break-word; white-space: normal; margin-bottom: 4px; }
@@ -165,6 +173,7 @@
                 <div class="search-histori-box">
                     <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
                 </div>
+                <!-- ID listHistori sekarang sudah dilimit tingginya di CSS -->
                 <div id="listHistori"></div>
             </div>
         </div>
@@ -173,7 +182,7 @@
     <script>
         const URL_GAS = "https://script.google.com/macros/s/AKfycbxpNBRGUpKqmurfoOi3EWHA7E8WB62hiZqkjN7Vj7nZopKycIJ7APHSMBmFVvx2NSUj-Q/exec";
         let editModeId = null;
-        let autoSyncTimer; // Variabel mesin siluman
+        let autoSyncTimer;
 
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -251,7 +260,6 @@
             if(document.getElementById('boxHistori').style.display === "none") toggleHistoriBox();
         }
 
-        // SPV FUNCTIONS
         async function verifikasiPIN() {
             let pin = document.getElementById('spvPin').value;
             let status = document.getElementById('pinStatus');
@@ -295,7 +303,6 @@
             reader.readAsArrayBuffer(fileInput.files[0]);
         }
 
-        // STAFF FUNCTIONS
         async function kunciSesi() {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let pic = document.getElementById('picStaff').value;
@@ -330,11 +337,8 @@
                     setTimeout(toggleSesiBox, 1000);
                     document.getElementById('kodeBarang').focus();
 
-                    // =====================================
-                    // FITUR BARU: NYALAKAN AUTO-SYNC BACKGROUND
-                    // =====================================
                     if(autoSyncTimer) clearInterval(autoSyncTimer);
-                    autoSyncTimer = setInterval(tarikRekapSiluman, 15000); // Eksekusi setiap 15 detik
+                    autoSyncTimer = setInterval(tarikRekapSiluman, 15000);
 
                 } else {
                     status.innerText = "❌ Job ID tidak ditemukan!"; status.style.color = "red";
@@ -342,7 +346,6 @@
             } catch(e) { status.innerText = "Koneksi gagal."; status.style.color = "red"; }
         }
 
-        // FUNGSI SILUMAN UNTUK SINKRONISASI LATAR BELAKANG
         async function tarikRekapSiluman() {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             if(!jobId) return;
@@ -350,10 +353,8 @@
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'sync_rekap', jobId: jobId }) });
                 let result = await res.json();
                 if(result.status === 'success') {
-                    // Update memori lokal
                     localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(result.rekapFisik));
                     
-                    // Jika layar sedang aktif menampilkan sebuah barang, update angka targetnya secara live
                     let curKode = document.getElementById('kodeBarang').value;
                     if(curKode && !editModeId) {
                          let master = JSON.parse(localStorage.getItem('masterJob')) || [];
@@ -362,14 +363,13 @@
                              let totalGlobal = result.rekapFisik[curKode] || 0;
                              document.getElementById('sisaTarget').value = barang.kuantitas - totalGlobal;
                              
-                             // Indikator visual kecil bahwa data baru saja tersinkronisasi
                              let ind = document.getElementById('syncIndicator');
                              ind.innerText = "(Live Synced)";
                              setTimeout(() => { ind.innerText = ""; }, 2000);
                          }
                     }
                 }
-            } catch(e) {} // Sengaja dikosongkan agar error internet tidak mengganggu pop-up staf
+            } catch(e) {} 
         }
 
         function handleEnterScan(e) { if(e.key === 'Enter') { e.preventDefault(); pencarianBarcode(); } }
