@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portal Audit Gudang</title>
+    <!-- Library Pembaca Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Library Scanner Kamera Lanjutan -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: linear-gradient(135deg, #3db597 0%, #156d53 100%); min-height: 100vh; display: flex; justify-content: center; overflow-x: hidden; }
         .navbar { width: 100%; background: #156d53; color: white; padding: 15px 20px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
@@ -27,7 +31,6 @@
         button.btn-submit { background-color: #3db597; color: white; margin-top: 10px; padding: 14px; font-size: 16px; }
         button.btn-submit:disabled { background-color: #ccc; cursor: not-allowed; }
         button.btn-spv { background-color: #156d53; color: white; margin-top: 10px; }
-        
         button.btn-toggle-symbol { width: 32px; height: 32px; padding: 0; font-size: 16px; background: #e8f5e9; color: #156d53; float: right; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1; border: 1px solid #c8e6c9; }
         button.btn-toggle-symbol:hover { background: #c8e6c9; }
         
@@ -38,14 +41,11 @@
         .histori-container { margin-top: 25px; border-top: 2px dashed #ccc; padding-top: 15px; display: none; }
         .search-histori-box { margin-bottom: 12px; position: relative; }
         .search-histori-box input { padding: 9px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #bbb; background-color: #fafafa; }
-        
-        /* UPDATE: Fitur Scroll pada List Histori */
         #listHistori { max-height: 260px; overflow-y: auto; padding-right: 5px; }
         #listHistori::-webkit-scrollbar { width: 5px; }
         #listHistori::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         #listHistori::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
-        #listHistori::-webkit-scrollbar-thumb:hover { background: #999; }
-
+        
         .histori-item { background: #f9f9f9; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
         .histori-detail { font-size: 12px; color: #555; flex: 1; }
         .histori-detail strong { color: #156d53; display: block; font-size: 13px; line-height: 1.4; word-break: break-word; white-space: normal; margin-bottom: 4px; }
@@ -62,12 +62,28 @@
         .autocomplete-container { position: relative; display: flex; align-items: center; width: 100%; }
         .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background-color: #fff; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px; }
         .autocomplete-items div { padding: 12px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px; line-height: 1.4; color: #333; }
-        .autocomplete-items div:hover, .autocomplete-items div:active { background-color: #e9e9e9; }
         .btn-flush { position: absolute; right: 12px; font-size: 18px; color: #e74c3c; cursor: pointer; user-select: none; transition: 0.2s; z-index: 10; }
         .btn-flush:hover { transform: scale(1.2); }
+
+        /* FITUR BARU: UI Scanner Kamera */
+        .btn-kamera { background: #156d53; color: white; border: none; padding: 0 15px; border-radius: 8px; font-size: 20px; cursor: pointer; flex-shrink: 0; width: 55px; }
+        .scanner-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 300; display: none; align-items: center; justify-content: center; flex-direction: column; }
+        .scanner-content { background: #fff; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; position: relative; text-align: center; }
+        .close-scanner { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #e74c3c; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 10px; }
     </style>
 </head>
 <body>
+
+    <!-- Modal Scanner Kamera (Tersembunyi by default) -->
+    <div id="scannerModal" class="scanner-modal">
+        <div class="scanner-content">
+            <span class="close-scanner" onclick="tutupKamera()">✖</span>
+            <h3 style="margin-top:0; color:#156d53; font-size:16px;">Arahkan ke Barcode</h3>
+            <div id="reader"></div>
+            <p style="font-size:12px; color:#666; margin-bottom:0;">Posisikan barcode di dalam kotak transparan.</p>
+        </div>
+    </div>
 
     <div class="navbar">
         <div class="hamburger" onclick="toggleSidebar()">☰</div>
@@ -140,7 +156,11 @@
         <div id="areaScan" style="opacity: 0.4; pointer-events: none;">
             <div class="form-group">
                 <label>2. Scan Barcode Barang:</label>
-                <input type="text" id="kodeBarang" placeholder="Scan Barcode..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()">
+                <!-- UPDATE: Layout fleksibel untuk menampung input dan tombol kamera -->
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="kodeBarang" placeholder="Scan Fisik..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()" style="flex: 1;">
+                    <button class="btn-kamera" onclick="bukaKamera()" title="Scan pakai Kamera HP">📷</button>
+                </div>
             </div>
             
             <div class="form-group">
@@ -173,7 +193,6 @@
                 <div class="search-histori-box">
                     <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
                 </div>
-                <!-- ID listHistori sekarang sudah dilimit tingginya di CSS -->
                 <div id="listHistori"></div>
             </div>
         </div>
@@ -183,7 +202,54 @@
         const URL_GAS = "https://script.google.com/macros/s/AKfycbxpNBRGUpKqmurfoOi3EWHA7E8WB62hiZqkjN7Vj7nZopKycIJ7APHSMBmFVvx2NSUj-Q/exec";
         let editModeId = null;
         let autoSyncTimer;
+        let html5QrCode; // Variabel Global untuk Kamera
 
+        // ==========================================
+        // FUNGSI KAMERA (BARU)
+        // ==========================================
+        function bukaKamera() {
+            document.getElementById('scannerModal').style.display = "flex";
+            
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+            
+            html5QrCode.start(
+                { facingMode: "environment" }, // Paksa pakai kamera belakang
+                {
+                    fps: 10, // Frame rate stabil untuk hemat baterai
+                    qrbox: { width: 250, height: 120 }, // Kotak makro pembidik (optimal untuk barcode 1D)
+                    aspectRatio: 1.0 // Rasio kotak persegi di layar
+                },
+                (decodedText, decodedResult) => {
+                    // Berhasil scan!
+                    tutupKamera();
+                    document.getElementById('kodeBarang').value = decodedText;
+                    pencarianBarcode(); // Trigger otomatis
+                },
+                (errorMessage) => {
+                    // Frame gagal (normal, abaikan saja)
+                }
+            ).catch((err) => {
+                alert("Gagal mengakses kamera. Pastikan Anda memberikan izin kamera pada browser (Safari/Chrome).");
+                tutupKamera();
+            });
+        }
+
+        function tutupKamera() {
+            document.getElementById('scannerModal').style.display = "none";
+            if (html5QrCode) {
+                html5QrCode.stop().then((ignore) => {
+                    // Scanner stopped
+                }).catch((err) => {
+                    console.log("Stop failed: ", err);
+                });
+            }
+        }
+
+        // ==========================================
+        // FUNGSI UI & LAINNYA (SAMA SEPERTI SEBELUMNYA)
+        // ==========================================
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
             document.getElementById('overlay').classList.toggle('active');
@@ -194,6 +260,7 @@
             let ringkas = document.getElementById('sesiRingkas');
             let btnSymbol = document.getElementById('btnToggleSymbol');
             let isLocked = document.getElementById('btnLock').disabled;
+
             if (box.style.display === "none") {
                 box.style.display = "block"; ringkas.style.display = "none"; btnSymbol.innerText = "∧";
             } else {
@@ -339,7 +406,6 @@
 
                     if(autoSyncTimer) clearInterval(autoSyncTimer);
                     autoSyncTimer = setInterval(tarikRekapSiluman, 15000);
-
                 } else {
                     status.innerText = "❌ Job ID tidak ditemukan!"; status.style.color = "red";
                 }
