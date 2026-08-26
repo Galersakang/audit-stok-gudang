@@ -28,7 +28,6 @@
         button.btn-submit:disabled { background-color: #ccc; cursor: not-allowed; }
         button.btn-spv { background-color: #156d53; color: white; margin-top: 10px; }
         
-        /* Tombol Toggle Simbol ∧ / ∨ */
         button.btn-toggle-symbol { width: 32px; height: 32px; padding: 0; font-size: 16px; background: #e8f5e9; color: #156d53; float: right; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1; border: 1px solid #c8e6c9; }
         button.btn-toggle-symbol:hover { background: #c8e6c9; }
         
@@ -41,14 +40,18 @@
         .search-histori-box { margin-bottom: 12px; position: relative; }
         .search-histori-box input { padding: 9px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #bbb; background-color: #fafafa; }
         .histori-item { background: #f9f9f9; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-        
-        /* Perbaikan: Nama Barang tidak terpotong */
         .histori-detail { font-size: 12px; color: #555; flex: 1; }
         .histori-detail strong { color: #156d53; display: block; font-size: 13px; line-height: 1.4; word-break: break-word; white-space: normal; margin-bottom: 4px; }
-        
         .histori-actions { display: flex; flex-direction: row; gap: 5px; flex-shrink: 0; }
         .btn-edit { background: #f39c12; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
         .btn-delete { background: #e74c3c; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
+
+        /* Accordion Item Selisih Styling */
+        details.selisih-box { background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 8px; padding: 8px 10px; }
+        details.selisih-box summary { font-weight: bold; font-size: 13px; color: #333; cursor: pointer; outline: none; }
+        .selisih-item { font-size: 12px; padding: 8px 0; border-bottom: 1px dashed #ccc; cursor: pointer; color: #156d53; transition: 0.2s; }
+        .selisih-item:hover { font-weight: bold; background-color: #e0f2ec; padding-left: 5px; }
+        .selisih-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -60,9 +63,33 @@
     </div>
     <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
 
-    <!-- Sidebar SPV -->
+    <!-- Sidebar Menu -->
     <div class="sidebar" id="sidebar">
         <span class="close-btn" onclick="toggleSidebar()">✖</span>
+        
+        <!-- BAGIAN STAFF: CEK ITEM SELISIH -->
+        <h3 style="margin-top: 10px;">Menu Staff</h3>
+        <p style="margin-top:-5px;">Tarik data dari Job ID yang terkunci di layar utama.</p>
+        <button id="btnMuatSelisih" class="btn-spv" style="background:#f39c12; color:white; margin-top:0;" onclick="muatDataSelisih()">🔄 Cek Item Selisih</button>
+        
+        <div id="areaSelisih" style="display:none; margin-top:15px;">
+            <details class="selisih-box">
+                <summary>➕ Item Plus (Lebih) [<span id="cntPlus">0</span>]</summary>
+                <div id="listPlus"></div>
+            </details>
+            <details class="selisih-box">
+                <summary>➖ Item Minus (Kurang) [<span id="cntMinus">0</span>]</summary>
+                <div id="listMinus"></div>
+            </details>
+            <details class="selisih-box">
+                <summary>❓ Belum Dihitung [<span id="cntBelum">0</span>]</summary>
+                <div id="listBelum"></div>
+            </details>
+        </div>
+
+        <hr style="border-top: 1px solid #eee; margin: 25px 0;">
+
+        <!-- BAGIAN SPV: UPLOAD DATA -->
         <h3>Panel SPV (Upload Data)</h3>
         <div id="spvPinArea">
             <input type="password" id="spvPin" placeholder="Ketik PIN SPV..." class="form-group" style="width:100%; padding:12px; box-sizing:border-box;">
@@ -129,14 +156,18 @@
 
         <!-- SESI 3: HISTORI INPUT -->
         <div class="histori-container" id="areaHistori">
-            <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
-            
-            <!-- Kotak Pencarian Histori -->
-            <div class="search-histori-box">
-                <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
+                <!-- Fitur Hide & Seek Histori -->
+                <button id="btnToggleHistori" class="btn-toggle-symbol" onclick="toggleHistoriBox()" title="Sembunyikan/Tampilkan">∧</button>
             </div>
             
-            <div id="listHistori"></div>
+            <div id="boxHistori">
+                <div class="search-histori-box">
+                    <input type="text" id="cariHistori" placeholder="🔍 Cari nama barang / barcode di histori..." oninput="filterHistori()">
+                </div>
+                <div id="listHistori"></div>
+            </div>
         </div>
     </div>
 
@@ -149,6 +180,7 @@
             document.getElementById('overlay').classList.toggle('active');
         }
 
+        // TOGGLE SESI BOX
         function toggleSesiBox() {
             let box = document.getElementById('boxSesi');
             let ringkas = document.getElementById('sesiRingkas');
@@ -165,6 +197,83 @@
                 btnSymbol.innerText = "∨";
             }
         }
+
+        // TOGGLE HISTORI BOX (Fitur Baru)
+        function toggleHistoriBox() {
+            let box = document.getElementById('boxHistori');
+            let btnSymbol = document.getElementById('btnToggleHistori');
+
+            if (box.style.display === "none") {
+                box.style.display = "block";
+                btnSymbol.innerText = "∧";
+            } else {
+                box.style.display = "none";
+                btnSymbol.innerText = "∨";
+            }
+        }
+
+        // ==========================================
+        // FITUR BARU: MUAT DATA ITEM SELISIH DARI BACKEND
+        // ==========================================
+        async function muatDataSelisih() {
+            let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+            let isLocked = document.getElementById('btnLock').disabled;
+            
+            if(!isLocked || !jobId) {
+                alert("Harap masukkan dan Kunci Job ID terlebih dahulu di layar utama untuk menarik data selisih.");
+                return;
+            }
+
+            let btn = document.getElementById('btnMuatSelisih');
+            btn.innerText = "Memuat data...";
+            
+            try {
+                let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_selisih_data', jobId: jobId }) });
+                let result = await res.json();
+                
+                if(result.status === 'success') {
+                    document.getElementById('areaSelisih').style.display = 'block';
+                    renderSelisihKategori('listPlus', 'cntPlus', result.plus);
+                    renderSelisihKategori('listMinus', 'cntMinus', result.minus);
+                    renderSelisihKategori('listBelum', 'cntBelum', result.belum);
+                    btn.innerText = "🔄 Refresh Data Selisih";
+                } else {
+                    alert("Gagal memuat: " + result.message);
+                    btn.innerText = "Cek Item Selisih";
+                }
+            } catch(e) { 
+                alert("Error koneksi!"); 
+                btn.innerText = "Cek Item Selisih"; 
+            }
+        }
+
+        function renderSelisihKategori(elementId, countId, dataArray) {
+            document.getElementById(countId).innerText = dataArray.length;
+            let html = '';
+            if(dataArray.length === 0) {
+                html = '<div style="font-size:11px; color:#888; padding:5px 0;">Tidak ada item.</div>';
+            } else {
+                dataArray.forEach(item => {
+                    html += `
+                    <div class="selisih-item" onclick="klikItemSelisih('${item.kode}')" title="Klik untuk hitung ulang">
+                        <strong>${item.nama}</strong><br>
+                        <span style="color:#666;">Target: ${item.target} | Fisik: ${item.fisik} | Selisih: <strong>${item.selisih}</strong></span>
+                    </div>`;
+                });
+            }
+            document.getElementById(elementId).innerHTML = html;
+        }
+
+        function klikItemSelisih(kode) {
+            toggleSidebar(); // Tutup sidebar otomatis
+            document.getElementById('kodeBarang').value = kode;
+            pencarianBarcode(); // Trigger otomatis cari nama dan target
+            
+            // Buka area histori jika sedang tertutup (agar fokus layar turun ke form)
+            let boxHistori = document.getElementById('boxHistori');
+            if(boxHistori.style.display === "none") toggleHistoriBox();
+        }
+
 
         // SPV FUNCTIONS
         async function verifikasiPIN() {
@@ -338,9 +447,7 @@
             document.getElementById('btnSubmit').disabled = false;
         }
 
-        // ==========================================
-        // FITUR HISTORI (FILTER, EDIT & DELETE)
-        // ==========================================
+        // HISTORI FUNCTIONS
         function simpanHistoriLokal(data, actionType) {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
