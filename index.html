@@ -35,7 +35,6 @@
         .overlay.active { display: block; }
         .status-msg { font-size: 13px; font-weight: bold; margin-bottom: 10px; margin-top: -5px; }
         
-        /* Histori Styling */
         .histori-container { margin-top: 25px; border-top: 2px dashed #ccc; padding-top: 15px; display: none; }
         .search-histori-box { margin-bottom: 12px; position: relative; }
         .search-histori-box input { padding: 9px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #bbb; background-color: #fafafa; }
@@ -46,16 +45,18 @@
         .btn-edit { background: #f39c12; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
         .btn-delete { background: #e74c3c; color: white; padding: 6px 10px; font-size: 12px; border-radius: 5px; width: auto; }
 
-        /* Accordion Item Selisih Styling */
         details.selisih-box { background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 8px; padding: 8px 10px; }
         details.selisih-box summary { font-weight: bold; font-size: 13px; color: #333; cursor: pointer; outline: none; }
         .selisih-item { font-size: 12px; padding: 8px 0; border-bottom: 1px dashed #ccc; cursor: pointer; color: #156d53; transition: 0.2s; }
         .selisih-item:hover { font-weight: bold; background-color: #e0f2ec; padding-left: 5px; }
         .selisih-item:last-child { border-bottom: none; }
 
-        /* Fitur Flush UI */
-        .input-wrapper { position: relative; display: flex; align-items: center; }
-        .btn-flush { position: absolute; right: 12px; font-size: 18px; color: #e74c3c; cursor: pointer; user-select: none; transition: 0.2s; }
+        /* FITUR BARU: Custom Autocomplete Styling (Tahan Banting di iOS) */
+        .autocomplete-container { position: relative; display: flex; align-items: center; width: 100%; }
+        .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background-color: #fff; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px; }
+        .autocomplete-items div { padding: 12px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px; line-height: 1.4; color: #333; }
+        .autocomplete-items div:hover, .autocomplete-items div:active { background-color: #e9e9e9; }
+        .btn-flush { position: absolute; right: 12px; font-size: 18px; color: #e74c3c; cursor: pointer; user-select: none; transition: 0.2s; z-index: 10; }
         .btn-flush:hover { transform: scale(1.2); }
     </style>
 </head>
@@ -135,13 +136,13 @@
                 <input type="text" id="kodeBarang" placeholder="Scan Barcode..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()">
             </div>
             
+            <!-- UPDATE: Custom Autocomplete Form -->
             <div class="form-group">
                 <label>Atau Ketik Nama Barang (Pilih dari List):</label>
-                <div class="input-wrapper">
-                    <input list="listNamaBarang" id="namaBarang" placeholder="Ketik nama barang..." onchange="pencarianNama()" style="padding-right: 35px;">
-                    <datalist id="listNamaBarang"></datalist>
-                    <!-- Tombol Flush Baru -->
+                <div class="autocomplete-container">
+                    <input type="text" id="namaBarang" placeholder="Ketik nama barang..." oninput="jalankanAutocomplete(this.value)" autocomplete="off" style="padding-right: 35px;">
                     <span class="btn-flush" onclick="flushForm()" title="Bersihkan Input">⛒</span>
+                    <div id="autocompleteList" class="autocomplete-items"></div>
                 </div>
             </div>
 
@@ -218,7 +219,6 @@
                 alert("Harap masukkan dan Kunci Job ID terlebih dahulu di layar utama untuk menarik data selisih.");
                 return;
             }
-
             let btn = document.getElementById('btnMuatSelisih');
             btn.innerText = "Memuat data...";
             
@@ -263,7 +263,6 @@
             toggleSidebar(); 
             document.getElementById('kodeBarang').value = kode;
             pencarianBarcode(); 
-            
             let boxHistori = document.getElementById('boxHistori');
             if(boxHistori.style.display === "none") toggleHistoriBox();
         }
@@ -291,7 +290,6 @@
             let fileInput = document.getElementById('fileExcel');
             let status = document.getElementById('uploadStatus');
             if(fileInput.files.length === 0) return status.innerText = "Pilih file!", status.style.color = "red";
-
             status.innerText = "Membuat Laporan... (Tunggu 10 detik)"; status.style.color = "#f39c12";
             let reader = new FileReader();
             reader.onload = function(e) {
@@ -333,13 +331,6 @@
                     localStorage.setItem('masterJob', JSON.stringify(result.master));
                     localStorage.setItem('histori_' + jobId, JSON.stringify(result.history));
                     
-                    let dataListHTML = '';
-                    result.master.forEach(b => {
-                        // FIX BUG MOBILE: Sisipkan text di dalam <option>
-                        dataListHTML += `<option value="${b.nama}">${b.nama}</option>`;
-                    });
-                    document.getElementById('listNamaBarang').innerHTML = dataListHTML;
-
                     status.innerText = `✅ Sesi Terkunci! (${result.master.length} Target)`;
                     status.style.color = "#156d53";
                     
@@ -371,6 +362,35 @@
             let barang = master.find(b => b.kode === kode);
             setHasilCari(barang, "Barcode");
         }
+
+        // FUNGSI BARU: Custom Autocomplete
+        function jalankanAutocomplete(val) {
+            let listContainer = document.getElementById("autocompleteList");
+            listContainer.innerHTML = "";
+            if (!val) return false;
+
+            let master = JSON.parse(localStorage.getItem('masterJob')) || [];
+            // Filter data yang cocok (Max tampilkan 30 item agar tidak berat di HP)
+            let matched = master.filter(b => b.nama.toLowerCase().includes(val.toLowerCase())).slice(0, 30);
+            
+            matched.forEach(b => {
+                let itemDiv = document.createElement("DIV");
+                itemDiv.innerHTML = b.nama; 
+                itemDiv.addEventListener("click", function(e) {
+                    document.getElementById("namaBarang").value = b.nama;
+                    listContainer.innerHTML = "";
+                    pencarianNama(); // Otomatis trigger pencarian setelah di-klik
+                });
+                listContainer.appendChild(itemDiv);
+            });
+        }
+
+        // Tutup daftar autocomplete jika klik di tempat lain
+        document.addEventListener("click", function (e) {
+            if (e.target.id !== "namaBarang") {
+                document.getElementById("autocompleteList").innerHTML = "";
+            }
+        });
 
         function pencarianNama() {
             let nama = document.getElementById('namaBarang').value.trim();
@@ -545,27 +565,27 @@
             } catch(e) { alert("Error koneksi!"); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
         }
 
-        // FUNGSI FLUSH UI (Dipanggil dari tombol ⛒)
+        // FUNGSI FLUSH UI
         function flushForm() {
             document.getElementById('kodeBarang').value = '';
             document.getElementById('namaBarang').value = '';
             document.getElementById('sisaTarget').value = '';
             document.getElementById('stokFisik').value = '';
             document.getElementById('statusScan').innerText = '';
+            document.getElementById('autocompleteList').innerHTML = ''; // Bersihkan List
             
             editModeId = null;
             let btnSubmit = document.getElementById('btnSubmit');
             btnSubmit.innerText = "Kirim Data Fisik";
             btnSubmit.style.backgroundColor = "#3db597";
-            btnSubmit.disabled = true; // Kunci tombol submit sampai data valid dipilih lagi
+            btnSubmit.disabled = true;
             
             document.getElementById('kodeBarang').focus();
         }
 
-        // Fungsi Reset internal pasca-submit
         function resetFormKhusus() {
             flushForm(); 
-            document.getElementById('btnSubmit').disabled = false; // Buka kunci saat reset normal
+            document.getElementById('btnSubmit').disabled = false; 
         }
     </script>
 </body>
