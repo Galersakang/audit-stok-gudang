@@ -52,6 +52,11 @@
         .selisih-item { font-size: 12px; padding: 8px 0; border-bottom: 1px dashed #ccc; cursor: pointer; color: #156d53; transition: 0.2s; }
         .selisih-item:hover { font-weight: bold; background-color: #e0f2ec; padding-left: 5px; }
         .selisih-item:last-child { border-bottom: none; }
+
+        /* Fitur Flush UI */
+        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .btn-flush { position: absolute; right: 12px; font-size: 18px; color: #e74c3c; cursor: pointer; user-select: none; transition: 0.2s; }
+        .btn-flush:hover { transform: scale(1.2); }
     </style>
 </head>
 <body>
@@ -129,11 +134,17 @@
                 <label>2. Scan Barcode Barang:</label>
                 <input type="text" id="kodeBarang" placeholder="Scan Barcode..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()">
             </div>
+            
             <div class="form-group">
                 <label>Atau Ketik Nama Barang (Pilih dari List):</label>
-                <input list="listNamaBarang" id="namaBarang" placeholder="Ketik nama barang..." onchange="pencarianNama()">
-                <datalist id="listNamaBarang"></datalist>
+                <div class="input-wrapper">
+                    <input list="listNamaBarang" id="namaBarang" placeholder="Ketik nama barang..." onchange="pencarianNama()" style="padding-right: 35px;">
+                    <datalist id="listNamaBarang"></datalist>
+                    <!-- Tombol Flush Baru -->
+                    <span class="btn-flush" onclick="flushForm()" title="Bersihkan Input">⛒</span>
+                </div>
             </div>
+
             <div class="form-group">
                 <label>Sisa Target (Sistem):</label>
                 <input type="number" id="sisaTarget" readonly placeholder="0">
@@ -315,20 +326,17 @@
             status.innerText = "Mengunduh Data Server..."; status.style.color = "#f39c12";
 
             try {
-                // UPDATE: Mengirimkan PIC untuk menarik sinkronisasi histori dari server
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_job_data', jobId: jobId, pic: pic }) });
                 let result = await res.json();
                 
                 if(result.status === 'success') {
-                    // Simpan data target
                     localStorage.setItem('masterJob', JSON.stringify(result.master));
-                    
-                    // SINKRONISASI SERVER KE LOKAL
                     localStorage.setItem('histori_' + jobId, JSON.stringify(result.history));
                     
                     let dataListHTML = '';
                     result.master.forEach(b => {
-                        dataListHTML += `<option value="${b.nama}">`;
+                        // FIX BUG MOBILE: Sisipkan text di dalam <option>
+                        dataListHTML += `<option value="${b.nama}">${b.nama}</option>`;
                     });
                     document.getElementById('listNamaBarang').innerHTML = dataListHTML;
 
@@ -537,18 +545,27 @@
             } catch(e) { alert("Error koneksi!"); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
         }
 
-        function resetFormKhusus() {
+        // FUNGSI FLUSH UI (Dipanggil dari tombol ⛒)
+        function flushForm() {
             document.getElementById('kodeBarang').value = '';
             document.getElementById('namaBarang').value = '';
             document.getElementById('sisaTarget').value = '';
             document.getElementById('stokFisik').value = '';
+            document.getElementById('statusScan').innerText = '';
             
             editModeId = null;
-            let btn = document.getElementById('btnSubmit');
-            btn.innerText = "Kirim Data Fisik";
-            btn.style.backgroundColor = "#3db597";
+            let btnSubmit = document.getElementById('btnSubmit');
+            btnSubmit.innerText = "Kirim Data Fisik";
+            btnSubmit.style.backgroundColor = "#3db597";
+            btnSubmit.disabled = true; // Kunci tombol submit sampai data valid dipilih lagi
             
             document.getElementById('kodeBarang').focus();
+        }
+
+        // Fungsi Reset internal pasca-submit
+        function resetFormKhusus() {
+            flushForm(); 
+            document.getElementById('btnSubmit').disabled = false; // Buka kunci saat reset normal
         }
     </script>
 </body>
