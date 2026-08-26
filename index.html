@@ -51,7 +51,6 @@
         .selisih-item:hover { font-weight: bold; background-color: #e0f2ec; padding-left: 5px; }
         .selisih-item:last-child { border-bottom: none; }
 
-        /* FITUR BARU: Custom Autocomplete Styling (Tahan Banting di iOS) */
         .autocomplete-container { position: relative; display: flex; align-items: center; width: 100%; }
         .autocomplete-items { position: absolute; border: 1px solid #d4d4d4; border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background-color: #fff; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px; }
         .autocomplete-items div { padding: 12px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px; line-height: 1.4; color: #333; }
@@ -75,7 +74,7 @@
         
         <h3 style="margin-top: 10px;">Menu Staff</h3>
         <p style="margin-top:-5px;">Tarik data dari Job ID yang terkunci di layar utama.</p>
-        <button id="btnMuatSelisih" class="btn-spv" style="background:#f39c12; color:white; margin-top:0;" onclick="muatDataSelisih()">🔄 Cek Item Selisih</button>
+        <button id="btnMuatSelisih" class="btn-spv" style="background:#f39c12; color:white; margin-top:0;" onclick="muatDataSelisih()">🔄 Sync & Cek Item Selisih</button>
         
         <div id="areaSelisih" style="display:none; margin-top:15px;">
             <details class="selisih-box">
@@ -136,7 +135,6 @@
                 <input type="text" id="kodeBarang" placeholder="Scan Barcode..." onkeypress="handleEnterScan(event)" onchange="pencarianBarcode()">
             </div>
             
-            <!-- UPDATE: Custom Autocomplete Form -->
             <div class="form-group">
                 <label>Atau Ketik Nama Barang (Pilih dari List):</label>
                 <div class="autocomplete-container">
@@ -147,8 +145,8 @@
             </div>
 
             <div class="form-group">
-                <label>Sisa Target (Sistem):</label>
-                <input type="number" id="sisaTarget" readonly placeholder="0">
+                <label style="color:#d35400;">Sisa Target (Kurangan Fisik): <span id="syncIndicator" style="font-size:10px; color:#27ae60; font-weight:normal;"></span></label>
+                <input type="number" id="sisaTarget" readonly placeholder="0" style="font-weight:bold; color:#d35400; background:#fff3e0;">
             </div>
             <div class="form-group">
                 <label>Stok Fisik Ditemukan:</label>
@@ -175,6 +173,7 @@
     <script>
         const URL_GAS = "https://script.google.com/macros/s/AKfycbxpNBRGUpKqmurfoOi3EWHA7E8WB62hiZqkjN7Vj7nZopKycIJ7APHSMBmFVvx2NSUj-Q/exec";
         let editModeId = null;
+        let autoSyncTimer; // Variabel mesin siluman
 
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -186,60 +185,46 @@
             let ringkas = document.getElementById('sesiRingkas');
             let btnSymbol = document.getElementById('btnToggleSymbol');
             let isLocked = document.getElementById('btnLock').disabled;
-
             if (box.style.display === "none") {
-                box.style.display = "block";
-                ringkas.style.display = "none";
-                btnSymbol.innerText = "∧";
+                box.style.display = "block"; ringkas.style.display = "none"; btnSymbol.innerText = "∧";
             } else {
-                box.style.display = "none";
-                if(isLocked) ringkas.style.display = "block";
-                btnSymbol.innerText = "∨";
+                box.style.display = "none"; if(isLocked) ringkas.style.display = "block"; btnSymbol.innerText = "∨";
             }
         }
 
         function toggleHistoriBox() {
             let box = document.getElementById('boxHistori');
             let btnSymbol = document.getElementById('btnToggleHistori');
-
             if (box.style.display === "none") {
-                box.style.display = "block";
-                btnSymbol.innerText = "∧";
+                box.style.display = "block"; btnSymbol.innerText = "∧";
             } else {
-                box.style.display = "none";
-                btnSymbol.innerText = "∨";
+                box.style.display = "none"; btnSymbol.innerText = "∨";
             }
         }
 
         async function muatDataSelisih() {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let isLocked = document.getElementById('btnLock').disabled;
+            if(!isLocked || !jobId) return alert("Kunci Job ID terlebih dahulu di layar utama.");
             
-            if(!isLocked || !jobId) {
-                alert("Harap masukkan dan Kunci Job ID terlebih dahulu di layar utama untuk menarik data selisih.");
-                return;
-            }
             let btn = document.getElementById('btnMuatSelisih');
-            btn.innerText = "Memuat data...";
+            btn.innerText = "Syncing...";
             
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_selisih_data', jobId: jobId }) });
                 let result = await res.json();
                 
                 if(result.status === 'success') {
+                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(result.rekapFisik));
                     document.getElementById('areaSelisih').style.display = 'block';
                     renderSelisihKategori('listPlus', 'cntPlus', result.plus);
                     renderSelisihKategori('listMinus', 'cntMinus', result.minus);
                     renderSelisihKategori('listBelum', 'cntBelum', result.belum);
-                    btn.innerText = "🔄 Refresh Data Selisih";
+                    btn.innerText = "🔄 Sync & Cek Item Selisih";
                 } else {
-                    alert("Gagal memuat: " + result.message);
-                    btn.innerText = "Cek Item Selisih";
+                    alert("Gagal memuat: " + result.message); btn.innerText = "Sync & Cek Item Selisih";
                 }
-            } catch(e) { 
-                alert("Error koneksi!"); 
-                btn.innerText = "Cek Item Selisih"; 
-            }
+            } catch(e) { alert("Error koneksi!"); btn.innerText = "Sync & Cek Item Selisih"; }
         }
 
         function renderSelisihKategori(elementId, countId, dataArray) {
@@ -252,7 +237,7 @@
                     html += `
                     <div class="selisih-item" onclick="klikItemSelisih('${item.kode}')" title="Klik untuk hitung ulang">
                         <strong>${item.nama}</strong><br>
-                        <span style="color:#666;">Target: ${item.target} | Fisik: ${item.fisik} | Selisih: <strong>${item.selisih}</strong></span>
+                        <span style="color:#666;">Target Master: ${item.target} | Total Fisik: ${item.fisik} | Selisih: <strong style="color:red;">${item.selisih}</strong></span>
                     </div>`;
                 });
             }
@@ -263,8 +248,7 @@
             toggleSidebar(); 
             document.getElementById('kodeBarang').value = kode;
             pencarianBarcode(); 
-            let boxHistori = document.getElementById('boxHistori');
-            if(boxHistori.style.display === "none") toggleHistoriBox();
+            if(document.getElementById('boxHistori').style.display === "none") toggleHistoriBox();
         }
 
         // SPV FUNCTIONS
@@ -298,10 +282,7 @@
                 let worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 let jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
                 let selE5 = worksheet['E5'] ? worksheet['E5'].v : "WHOLESALE"; 
-
-                fetch(URL_GAS, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'upload_master', data: jsonData, gudang: selE5 })
+                fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'upload_master', data: jsonData, gudang: selE5 })
                 }).then(res => res.json()).then(result => {
                     if(result.status === 'success') {
                         status.innerText = "✅ Sesi Dibuat!"; status.style.color = "#156d53";
@@ -330,6 +311,7 @@
                 if(result.status === 'success') {
                     localStorage.setItem('masterJob', JSON.stringify(result.master));
                     localStorage.setItem('histori_' + jobId, JSON.stringify(result.history));
+                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(result.rekapFisik));
                     
                     status.innerText = `✅ Sesi Terkunci! (${result.master.length} Target)`;
                     status.style.color = "#156d53";
@@ -347,10 +329,47 @@
                     
                     setTimeout(toggleSesiBox, 1000);
                     document.getElementById('kodeBarang').focus();
+
+                    // =====================================
+                    // FITUR BARU: NYALAKAN AUTO-SYNC BACKGROUND
+                    // =====================================
+                    if(autoSyncTimer) clearInterval(autoSyncTimer);
+                    autoSyncTimer = setInterval(tarikRekapSiluman, 15000); // Eksekusi setiap 15 detik
+
                 } else {
                     status.innerText = "❌ Job ID tidak ditemukan!"; status.style.color = "red";
                 }
             } catch(e) { status.innerText = "Koneksi gagal."; status.style.color = "red"; }
+        }
+
+        // FUNGSI SILUMAN UNTUK SINKRONISASI LATAR BELAKANG
+        async function tarikRekapSiluman() {
+            let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+            if(!jobId) return;
+            try {
+                let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'sync_rekap', jobId: jobId }) });
+                let result = await res.json();
+                if(result.status === 'success') {
+                    // Update memori lokal
+                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(result.rekapFisik));
+                    
+                    // Jika layar sedang aktif menampilkan sebuah barang, update angka targetnya secara live
+                    let curKode = document.getElementById('kodeBarang').value;
+                    if(curKode && !editModeId) {
+                         let master = JSON.parse(localStorage.getItem('masterJob')) || [];
+                         let barang = master.find(b => b.kode === curKode);
+                         if(barang) {
+                             let totalGlobal = result.rekapFisik[curKode] || 0;
+                             document.getElementById('sisaTarget').value = barang.kuantitas - totalGlobal;
+                             
+                             // Indikator visual kecil bahwa data baru saja tersinkronisasi
+                             let ind = document.getElementById('syncIndicator');
+                             ind.innerText = "(Live Synced)";
+                             setTimeout(() => { ind.innerText = ""; }, 2000);
+                         }
+                    }
+                }
+            } catch(e) {} // Sengaja dikosongkan agar error internet tidak mengganggu pop-up staf
         }
 
         function handleEnterScan(e) { if(e.key === 'Enter') { e.preventDefault(); pencarianBarcode(); } }
@@ -363,33 +382,26 @@
             setHasilCari(barang, "Barcode");
         }
 
-        // FUNGSI BARU: Custom Autocomplete
         function jalankanAutocomplete(val) {
             let listContainer = document.getElementById("autocompleteList");
             listContainer.innerHTML = "";
             if (!val) return false;
-
             let master = JSON.parse(localStorage.getItem('masterJob')) || [];
-            // Filter data yang cocok (Max tampilkan 30 item agar tidak berat di HP)
             let matched = master.filter(b => b.nama.toLowerCase().includes(val.toLowerCase())).slice(0, 30);
-            
             matched.forEach(b => {
                 let itemDiv = document.createElement("DIV");
                 itemDiv.innerHTML = b.nama; 
                 itemDiv.addEventListener("click", function(e) {
                     document.getElementById("namaBarang").value = b.nama;
                     listContainer.innerHTML = "";
-                    pencarianNama(); // Otomatis trigger pencarian setelah di-klik
+                    pencarianNama(); 
                 });
                 listContainer.appendChild(itemDiv);
             });
         }
 
-        // Tutup daftar autocomplete jika klik di tempat lain
         document.addEventListener("click", function (e) {
-            if (e.target.id !== "namaBarang") {
-                document.getElementById("autocompleteList").innerHTML = "";
-            }
+            if (e.target.id !== "namaBarang") { document.getElementById("autocompleteList").innerHTML = ""; }
         });
 
         function pencarianNama() {
@@ -407,7 +419,14 @@
             if(barang) {
                 document.getElementById('kodeBarang').value = barang.kode;
                 document.getElementById('namaBarang').value = barang.nama;
-                document.getElementById('sisaTarget').value = barang.kuantitas;
+                
+                let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+                let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
+                let totalGlobal = rekap[barang.kode] || 0;
+                let sisaTargetReal = barang.kuantitas - totalGlobal;
+                
+                document.getElementById('sisaTarget').value = sisaTargetReal;
+                
                 status.innerText = `✅ Valid (${tipe}). Masukkan stok fisik.`;
                 status.style.color = "#156d53";
                 btnSubmit.disabled = false;
@@ -430,6 +449,10 @@
             let idTransaksi = editModeId ? editModeId : "ID-" + Date.now();
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
 
+            let master = JSON.parse(localStorage.getItem('masterJob')) || [];
+            let barang = master.find(b => b.kode === document.getElementById('kodeBarang').value);
+            let stokSistemMaster = barang ? barang.kuantitas : 0;
+
             let payload = {
                 action: actionType,
                 id: idTransaksi,
@@ -438,7 +461,7 @@
                 pic: document.getElementById('picStaff').value,
                 kode: document.getElementById('kodeBarang').value,
                 nama: document.getElementById('namaBarang').value,
-                stokSistem: document.getElementById('sisaTarget').value,
+                stokSistem: stokSistemMaster,
                 stokFisik: stokFisik
             };
 
@@ -453,6 +476,11 @@
                 if(result.status === 'success') {
                     status.innerText = editModeId ? "✅ Data Diubah!" : "✅ Tersimpan!";
                     status.style.color = "#156d53";
+                    
+                    let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
+                    rekap[result.kode] = result.newTotal;
+                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
+
                     simpanHistoriLokal(payload, actionType);
                     resetFormKhusus();
                 } else {
@@ -463,18 +491,13 @@
             document.getElementById('btnSubmit').disabled = false;
         }
 
-        // HISTORI FUNCTIONS
         function simpanHistoriLokal(data, actionType) {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
-            
             if(actionType === 'edit_scan') {
                 let idx = histori.findIndex(h => h.id === data.id);
                 if(idx !== -1) histori[idx] = data;
-            } else {
-                histori.unshift(data);
-            }
-            
+            } else { histori.unshift(data); }
             localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
             renderHistori();
         }
@@ -487,17 +510,11 @@
         function renderHistori(keyword = "") {
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
-            
             if(keyword !== "") {
-                histori = histori.filter(h => 
-                    h.nama.toLowerCase().includes(keyword) || 
-                    h.kode.toLowerCase().includes(keyword)
-                );
+                histori = histori.filter(h => h.nama.toLowerCase().includes(keyword) || h.kode.toLowerCase().includes(keyword));
             }
-
             let html = '';
-            if(histori.length === 0) {
-                html = "<p style='font-size:12px; color:#888;'>Tidak ada data histori yang cocok.</p>";
+            if(histori.length === 0) { html = "<p style='font-size:12px; color:#888;'>Tidak ada data histori yang cocok.</p>";
             } else {
                 histori.forEach(h => {
                     html += `
@@ -525,24 +542,27 @@
             if(data) {
                 document.getElementById('kodeBarang').value = data.kode;
                 document.getElementById('namaBarang').value = data.nama;
-                document.getElementById('sisaTarget').value = data.stokSistem;
+                
+                let master = JSON.parse(localStorage.getItem('masterJob')) || [];
+                let barang = master.find(b => b.kode === data.kode);
+                let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
+                let totalGlobal = rekap[data.kode] || 0;
+                
+                let sisaTargetReal = barang ? (barang.kuantitas - (totalGlobal - data.stokFisik)) : data.stokSistem;
+                document.getElementById('sisaTarget').value = sisaTargetReal;
                 document.getElementById('stokFisik').value = data.stokFisik;
                 
                 editModeId = id;
                 let btn = document.getElementById('btnSubmit');
-                btn.innerText = "Simpan Perubahan (Edit)";
-                btn.style.backgroundColor = "#f39c12";
+                btn.innerText = "Simpan Perubahan (Edit)"; btn.style.backgroundColor = "#f39c12";
                 
-                document.getElementById('statusScan').innerText = "⚠️ Mode Edit Aktif";
-                document.getElementById('statusScan').style.color = "#f39c12";
-                
+                document.getElementById('statusScan').innerText = "⚠️ Mode Edit Aktif"; document.getElementById('statusScan').style.color = "#f39c12";
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
 
         async function hapusDataServer(id) {
             if(!confirm("Yakin ingin menghapus data ini dari sistem?")) return;
-            
             let btnDel = document.querySelector(`#item-${id} .btn-delete`);
             btnDel.innerText = "..."; btnDel.disabled = true;
 
@@ -552,41 +572,36 @@
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify(payload) });
                 let result = await res.json();
-                
                 if(result.status === 'success') {
+                    let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
+                    rekap[result.kode] = result.newTotal;
+                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
+
                     let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
                     histori = histori.filter(h => h.id !== id);
                     localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
                     filterHistori();
                 } else {
-                    alert("Gagal menghapus: " + result.message);
-                    btnDel.innerText = "Hapus"; btnDel.disabled = false;
+                    alert("Gagal menghapus: " + result.message); btnDel.innerText = "Hapus"; btnDel.disabled = false;
                 }
             } catch(e) { alert("Error koneksi!"); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
         }
 
-        // FUNGSI FLUSH UI
         function flushForm() {
             document.getElementById('kodeBarang').value = '';
             document.getElementById('namaBarang').value = '';
             document.getElementById('sisaTarget').value = '';
             document.getElementById('stokFisik').value = '';
             document.getElementById('statusScan').innerText = '';
-            document.getElementById('autocompleteList').innerHTML = ''; // Bersihkan List
+            document.getElementById('autocompleteList').innerHTML = ''; 
             
             editModeId = null;
             let btnSubmit = document.getElementById('btnSubmit');
-            btnSubmit.innerText = "Kirim Data Fisik";
-            btnSubmit.style.backgroundColor = "#3db597";
-            btnSubmit.disabled = true;
-            
+            btnSubmit.innerText = "Kirim Data Fisik"; btnSubmit.style.backgroundColor = "#3db597"; btnSubmit.disabled = true;
             document.getElementById('kodeBarang').focus();
         }
 
-        function resetFormKhusus() {
-            flushForm(); 
-            document.getElementById('btnSubmit').disabled = false; 
-        }
+        function resetFormKhusus() { flushForm(); document.getElementById('btnSubmit').disabled = false; }
     </script>
 </body>
 </html>
