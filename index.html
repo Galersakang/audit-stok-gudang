@@ -196,6 +196,7 @@
         let editModeId = null;
         let autoSyncTimer;
         let html5QrCode;
+        let isSyncing = false; // Mencegah bentrok antrean saat sync background
 
         function bukaKamera() {
             document.getElementById('scannerModal').style.display = "flex";
@@ -210,7 +211,7 @@
 
         function tutupKamera() {
             document.getElementById('scannerModal').style.display = "none";
-            if (html5QrCode) html5QrCode.stop().then((ignore) => {}).catch((err) => { console.log("Stop failed: ", err); });
+            if (html5QrCode) html5QrCode.stop().then((ignore) => {}).catch((err) => {});
         }
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').classList.toggle('active'); }
@@ -325,7 +326,7 @@
             let status = document.getElementById('lockStatus');
             
             if(!jobId || !pic) return status.innerText = "Isi Job ID dan PIC!", status.style.color = "red";
-            status.innerText = "Mengunduh Data Server..."; status.style.color = "#f39c12";
+            status.innerText = "Mengunduh Data Server (Tunggu beberapa detik)..."; status.style.color = "#f39c12";
 
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_job_data', jobId: jobId, pic: pic }) });
@@ -354,16 +355,17 @@
                     document.getElementById('kodeBarang').focus();
 
                     if(autoSyncTimer) clearInterval(autoSyncTimer);
-                    // UPDATE: Diperlonggar menjadi 60 detik (60000 ms) agar server Google tidak overload
                     autoSyncTimer = setInterval(tarikRekapSiluman, 60000); 
-
                 } else { status.innerText = "❌ Job ID tidak ditemukan!"; status.style.color = "red"; }
-            } catch(e) { status.innerText = "Koneksi gagal."; status.style.color = "red"; }
+            } catch(e) { status.innerText = "Koneksi gagal. Coba tekan Kunci lagi."; status.style.color = "red"; }
         }
 
         async function tarikRekapSiluman() {
+            if (isSyncing) return; // Cegah antrean ganda
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             if(!jobId) return;
+            
+            isSyncing = true;
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'sync_rekap', jobId: jobId }) });
                 let result = await res.json();
@@ -382,9 +384,11 @@
                     }
                 }
             } catch(e) {} 
+            isSyncing = false;
         }
 
         function handleEnterScan(e) { if(e.key === 'Enter') { e.preventDefault(); pencarianBarcode(); } }
+
         function pencarianBarcode() {
             let kode = document.getElementById('kodeBarang').value.trim();
             if(!kode) return;
@@ -430,17 +434,24 @@
             if(barang) {
                 document.getElementById('kodeBarang').value = barang.kode;
                 document.getElementById('namaBarang').value = barang.nama;
+                
                 let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
                 let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
                 let totalGlobal = rekap[barang.kode] || 0;
                 let sisaTargetReal = barang.kuantitas - totalGlobal;
+                
                 document.getElementById('sisaTarget').value = sisaTargetReal;
-                status.innerText = `✅ Valid (${tipe}). Masukkan stok fisik.`; status.style.color = "#156d53";
-                btnSubmit.disabled = false; document.getElementById('stokFisik').focus();
+                
+                status.innerText = `✅ Valid (${tipe}). Masukkan stok fisik.`;
+                status.style.color = "#156d53";
+                btnSubmit.disabled = false;
+                document.getElementById('stokFisik').focus();
             } else {
                 document.getElementById('sisaTarget').value = "0";
-                status.innerText = `❌ ${tipe} Tidak Ditemukan. Berikan ke SPV.`; status.style.color = "red";
-                btnSubmit.disabled = true; setTimeout(resetFormKhusus, 3000);
+                status.innerText = `❌ ${tipe} Tidak Ditemukan. Berikan ke SPV.`;
+                status.style.color = "red";
+                btnSubmit.disabled = true;
+                setTimeout(resetFormKhusus, 3000);
             }
         }
 
@@ -452,28 +463,51 @@
             let actionType = editModeId ? 'edit_scan' : 'submit_scan';
             let idTransaksi = editModeId ? editModeId : "ID-" + Date.now();
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+
             let master = JSON.parse(localStorage.getItem('masterJob')) || [];
             let barang = master.find(b => b.kode === document.getElementById('kodeBarang').value);
             let stokSistemMaster = barang ? barang.kuantitas : 0;
 
-            let payload = { action: actionType, id: idTransaksi, jobId: jobId, waktu: new Date().toLocaleString('id-ID'), pic: document.getElementById('picStaff').value, kode: document.getElementById('kodeBarang').value, nama: document.getElementById('namaBarang').value, stokSistem: stokSistemMaster, stokFisik: stokFisik };
+            let payload = {
+                action: actionType,
+                id: idTransaksi,
+                jobId: jobId,
+                waktu: new Date().toLocaleString('id-ID'),
+                pic: document.getElementById('picStaff').value,
+                kode: document.getElementById('kodeBarang').value,
+                nama: document.getElementById('namaBarang').value,
+                stokSistem: stokSistemMaster,
+                stokFisik: stokFisik
+            };
 
-            status.innerText = editModeId ? "Mengubah data..." : "Mengirim data..."; status.style.color = "#f39c12"; document.getElementById('btnSubmit').disabled = true;
+            status.innerText = editModeId ? "Mengubah data..." : "Mengirim data..."; 
+            status.style.color = "#f39c12";
+            document.getElementById('btnSubmit').disabled = true;
 
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify(payload) });
                 let result = await res.json();
+
                 if(result.status === 'success') {
-                    status.innerText = editModeId ? "✅ Data Diubah!" : "✅ Tersimpan!"; status.style.color = "#156d53";
-                    let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
-                    rekap[result.kode] = result.newTotal;
-                    localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
-                    simpanHistoriLokal(payload, actionType); resetFormKhusus();
+                    status.innerText = editModeId ? "✅ Data Diubah!" : "✅ Tersimpan!";
+                    status.style.color = "#156d53";
+                    
+                    // UPDATE: Perhitungan Lokal Super Cepat Tanpa Menunggu Server
+                    if (actionType === 'submit_scan') {
+                        let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
+                        rekap[result.kode] = (parseFloat(rekap[result.kode]) || 0) + parseFloat(stokFisik);
+                        localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
+                    } else {
+                        // Jika Edit/Delete, paksa tarik rekap dari server agar akurat
+                        tarikRekapSiluman();
+                    }
+
+                    simpanHistoriLokal(payload, actionType);
+                    resetFormKhusus();
                 } else {
-                    // UPDATE: Pesan jika terjadi antrean server / error
-                    status.innerText = "❌ Gagal: " + result.message; status.style.color = "red"; 
+                    status.innerText = "❌ Gagal: " + result.message; status.style.color = "red";
                 }
-            } catch(e) { status.innerText = "❌ Error internet atau Server Sibuk."; status.style.color = "red"; }
+            } catch(e) { status.innerText = "❌ Error internet. Coba tekan Kirim lagi."; status.style.color = "red"; }
             
             document.getElementById('btnSubmit').disabled = false;
         }
@@ -514,6 +548,7 @@
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
             let data = histori.find(h => h.id === id);
+            
             if(data) {
                 document.getElementById('kodeBarang').value = data.kode; document.getElementById('namaBarang').value = data.nama;
                 let master = JSON.parse(localStorage.getItem('masterJob')) || []; let barang = master.find(b => b.kode === data.kode);
@@ -534,8 +569,8 @@
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify(payload) });
                 let result = await res.json();
                 if(result.status === 'success') {
-                    let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {}; rekap[result.kode] = result.newTotal; localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
                     let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || []; histori = histori.filter(h => h.id !== id); localStorage.setItem('histori_' + jobId, JSON.stringify(histori)); filterHistori();
+                    tarikRekapSiluman(); // Panggil sinkronisasi usai menghapus
                 } else { alert("Gagal menghapus: " + result.message); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
             } catch(e) { alert("Error koneksi!"); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
         }
@@ -545,6 +580,7 @@
             editModeId = null; let btnSubmit = document.getElementById('btnSubmit'); btnSubmit.innerText = "Kirim Data Fisik"; btnSubmit.style.backgroundColor = "#3db597"; btnSubmit.disabled = true;
             document.getElementById('kodeBarang').focus();
         }
+
         function resetFormKhusus() { flushForm(); document.getElementById('btnSubmit').disabled = false; }
     </script>
 </body>
