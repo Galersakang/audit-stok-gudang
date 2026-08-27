@@ -69,7 +69,6 @@
         .close-scanner { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #e74c3c; }
         #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 10px; }
 
-        /* Status Antrean Lokal UI */
         .queue-status { background-color: #fff3e0; border: 1px solid #ffe0b2; color: #d35400; padding: 6px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; margin-bottom: 15px; display: none; align-items: center; justify-content: space-between; }
         .queue-status.synced { background-color: #e8f5e9; border: 1px solid #c8e6c9; color: #27ae60; }
     </style>
@@ -151,7 +150,6 @@
             <p id="sesiRingkas" style="display:none; font-size:13px; font-weight:bold; color:#27ae60; margin:0;">✅ Sesi Terkunci.</p>
         </div>
 
-        <!-- FITUR BARU: Indikator Antrean Background -->
         <div id="queueStatusBox" class="queue-status">
             <span id="queueText">☁️ 0 data tertunda (Server Syncing)</span>
             <span id="queueLoader" style="font-size: 14px;"></span>
@@ -189,7 +187,7 @@
 
         <div class="histori-container" id="areaHistori">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="margin: 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
+                <h3 id="historiTitle" style="margin: 0; font-size: 15px; color: #333;">Histori Input Sesi Ini</h3>
                 <button id="btnToggleHistori" class="btn-toggle-symbol" onclick="toggleHistoriBox()" title="Sembunyikan/Tampilkan">∧</button>
             </div>
             <div id="boxHistori">
@@ -206,8 +204,12 @@
         let editModeId = null;
         let autoSyncTimer;
         let html5QrCode;
-        let isSyncingQueue = false; // Mencegah bentrok antrean
+        let isSyncingQueue = false; 
         let isSyncingRekap = false;
+        
+        // Variabel penampung fitur baru
+        let globalHistoryView = null; 
+        let editOriginalPic = null;
 
         function bukaKamera() {
             document.getElementById('scannerModal').style.display = "flex";
@@ -275,7 +277,53 @@
             document.getElementById(elementId).innerHTML = html;
         }
 
-        function klikItemSelisih(kode) { toggleSidebar(); document.getElementById('kodeBarang').value = kode; pencarianBarcode(); if(document.getElementById('boxHistori').style.display === "none") toggleHistoriBox(); }
+        // FITUR BARU: Penarikan Histori Global saat mengeklik item selisih
+        async function klikItemSelisih(kode) { 
+            toggleSidebar(); 
+            document.getElementById('kodeBarang').value = kode; 
+            pencarianBarcode(); 
+            if(document.getElementById('boxHistori').style.display === "none") toggleHistoriBox(); 
+            
+            document.getElementById('historiTitle').innerText = "Histori Input Server (Global)";
+            document.getElementById('listHistori').innerHTML = "<p style='font-size:12px; color:#f39c12;'>⏳ Menarik histori global dari server...</p>";
+            
+            let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+            try {
+                let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'get_global_history_item', jobId: jobId, kode: kode }) });
+                let result = await res.json();
+                if(result.status === 'success') {
+                    globalHistoryView = result.history;
+                    renderGlobalHistori();
+                } else {
+                    document.getElementById('listHistori').innerHTML = "<p style='color:red;'>Gagal menarik data histori server.</p>";
+                }
+            } catch(e) {
+                document.getElementById('listHistori').innerHTML = "<p style='color:red;'>Error koneksi server.</p>";
+            }
+        }
+
+        function renderGlobalHistori() {
+            let html = `<div style="background:#e0f2ec; padding:8px; border-radius:6px; margin-bottom:10px; font-size:12px; color:#156d53; font-weight:bold;">🌐 Mode Koreksi Silang: Menampilkan seluruh staf yang menginput barang ini.</div>`;
+            if(globalHistoryView.length === 0) { 
+                html += "<p style='font-size:12px; color:#888;'>Belum ada inputan fisik untuk barang ini.</p>"; 
+            } else {
+                globalHistoryView.forEach(h => {
+                    html += `
+                    <div class="histori-item" id="item-${h.id}">
+                        <div class="histori-detail">
+                            <strong>${h.nama}</strong>
+                            <span>Input by: <strong style="color:#2980b9;">${h.pic}</strong></span><br>
+                            <span>Qty Fisik: <strong style="color:#d35400; display:inline;">${h.stokFisik}</strong> | ${h.waktu.split(' ')[1] || h.waktu}</span>
+                        </div>
+                        <div class="histori-actions">
+                            <button class="btn-edit" onclick="masukModeEdit('${h.id}', true)">Edit</button>
+                            <button class="btn-delete" onclick="hapusDataServer('${h.id}', true)">Hapus</button>
+                        </div>
+                    </div>`;
+                });
+            }
+            document.getElementById('listHistori').innerHTML = html;
+        }
 
         async function verifikasiPIN() {
             let pin = document.getElementById('spvPin').value; let status = document.getElementById('pinStatus'); if(!pin) return;
@@ -329,19 +377,12 @@
 
                     let areaScan = document.getElementById('areaScan'); areaScan.style.opacity = "1"; areaScan.style.pointerEvents = "auto";
                     document.getElementById('areaHistori').style.display = "block";
-                    renderHistori();
-                    updateQueueUI(); // Inisialisasi UI Antrean
+                    renderHistori(); updateQueueUI(); 
                     setTimeout(toggleSesiBox, 1000); document.getElementById('kodeBarang').focus();
 
-                    // =====================================
-                    // MESIN KURIR SILUMAN (BACKGROUND WORKERS)
-                    // =====================================
                     if(autoSyncTimer) clearInterval(autoSyncTimer);
-                    // 1. Eksekusi pengiriman antrean lokal ke server setiap 3 Detik
                     setInterval(prosesAntreanSiluman, 3000); 
-                    // 2. Eksekusi tarik total fisik dari server ke HP setiap 60 Detik (Agar tidak berbenturan)
                     autoSyncTimer = setInterval(tarikRekapSiluman, 60000); 
-
                 } else { status.innerText = "❌ Job ID tidak ditemukan!"; status.style.color = "red"; }
             } catch(e) { status.innerText = "Koneksi gagal. Coba tekan Kunci lagi."; status.style.color = "red"; }
         }
@@ -354,17 +395,14 @@
             
             box.style.display = 'flex';
             if (queue.length > 0) {
-                box.classList.remove('synced');
-                text.innerText = `☁️ ${queue.length} data tertunda (Proses Cloud...)`;
+                box.classList.remove('synced'); text.innerText = `☁️ ${queue.length} data tertunda (Proses Cloud...)`;
             } else {
-                box.classList.add('synced');
-                text.innerText = `✅ Semua data tersimpan di Cloud.`;
+                box.classList.add('synced'); text.innerText = `✅ Semua data tersimpan di Cloud.`;
             }
         }
 
-        // FUNGSI INTI: Kurir Pengirim Antrean
         async function prosesAntreanSiluman() {
-            if(isSyncingQueue) return; // Jangan tumpuk pekerjaan
+            if(isSyncingQueue) return; 
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             if(!jobId) return;
 
@@ -376,21 +414,17 @@
             document.getElementById('queueLoader').innerText = "⏳";
             
             let payload = { action: 'submit_scan', jobId: jobId, scans: queue };
-
             try {
                 let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify(payload) });
                 let result = await res.json();
                 if(result.status === 'success') {
-                    // Hapus data yang SUDAH dikirim dari keranjang lokal
                     let currentQueue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
                     let sentIds = queue.map(q => q.id);
                     let remainingQueue = currentQueue.filter(q => !sentIds.includes(q.id));
                     localStorage.setItem('syncQueue_' + jobId, JSON.stringify(remainingQueue));
                     updateQueueUI();
                 }
-            } catch(e) {
-                // Biarkan, akan diulang lagi 3 detik kemudian tanpa staf sadar
-            }
+            } catch(e) {}
             document.getElementById('queueLoader').innerText = "";
             isSyncingQueue = false;
         }
@@ -412,11 +446,8 @@
                          let barang = master.find(b => b.kode === curKode);
                          if(barang) {
                              let totalGlobal = result.rekapFisik[curKode] || 0;
-                             
-                             // Kalkulasi sisa target murni berdasar rekap server + antrean lokal yang belum sampai
                              let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
                              let antreanBarangIni = queue.filter(q => q.kode === curKode).reduce((sum, q) => sum + parseFloat(q.stokFisik), 0);
-                             
                              document.getElementById('sisaTarget').value = barang.kuantitas - (totalGlobal + antreanBarangIni);
                          }
                     }
@@ -426,7 +457,6 @@
         }
 
         function handleEnterScan(e) { if(e.key === 'Enter') { e.preventDefault(); pencarianBarcode(); } }
-
         function pencarianBarcode() {
             let kode = document.getElementById('kodeBarang').value.trim(); if(!kode) return;
             let master = JSON.parse(localStorage.getItem('masterJob')) || []; let barang = master.find(b => b.kode === kode);
@@ -458,8 +488,6 @@
                 let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
                 let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
                 let totalGlobal = rekap[barang.kode] || 0;
-                
-                // Tambahkan perhitungan yang masih tertunda di antrean HP
                 let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
                 let antreanBarangIni = queue.filter(q => q.kode === barang.kode).reduce((sum, q) => sum + parseFloat(q.stokFisik), 0);
                 
@@ -468,15 +496,13 @@
                 status.innerText = `✅ Valid (${tipe}). Masukkan stok fisik.`; status.style.color = "#156d53";
                 btnSubmit.disabled = false; document.getElementById('stokFisik').focus();
             } else {
-                document.getElementById('sisaTarget').value = "0"; status.innerText = `❌ ${tipe} Tidak Ditemukan.`; status.style.color = "red";
+                document.getElementById('sisaTarget').value = "0"; status.innerText = `❌ ${tipe} Tidak Ditemukan. Berikan ke SPV.`; status.style.color = "red";
                 btnSubmit.disabled = true; setTimeout(resetFormKhusus, 3000);
             }
         }
 
-        // FUNGSI INTI: Simpan Data (Sekarang Instant tanpa Loading)
         async function prosesSimpanData() {
-            let stokFisik = document.getElementById('stokFisik').value;
-            let status = document.getElementById('statusScan');
+            let stokFisik = document.getElementById('stokFisik').value; let status = document.getElementById('statusScan');
             if(!stokFisik) return status.innerText = "Isi jumlah fisik!", status.style.color = "red";
 
             let actionType = editModeId ? 'edit_scan' : 'submit_scan';
@@ -492,47 +518,39 @@
                 id: idTransaksi,
                 jobId: jobId,
                 waktu: new Date().toLocaleString('id-ID'),
-                pic: document.getElementById('picStaff').value,
+                // UPDATE: Saat edit silang, gunakan nama staf aslinya. Jika input baru, gunakan nama PIC login.
+                pic: editOriginalPic ? editOriginalPic : document.getElementById('picStaff').value,
                 kode: document.getElementById('kodeBarang').value,
                 nama: document.getElementById('namaBarang').value,
                 stokSistem: stokSistemMaster,
                 stokFisik: stokFisik
             };
 
-            // Jika Data Baru: Langsung masukkan Keranjang Antrean tanpa menunggu server
             if (actionType === 'submit_scan') {
-                let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
-                queue.push(payload);
-                localStorage.setItem('syncQueue_' + jobId, JSON.stringify(queue));
-                
-                // Update Local Visual Instan
-                let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {};
-                rekap[payload.kode] = (parseFloat(rekap[payload.kode]) || 0) + parseFloat(stokFisik);
+                let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || []; queue.push(payload); localStorage.setItem('syncQueue_' + jobId, JSON.stringify(queue));
+                let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {}; rekap[payload.kode] = (parseFloat(rekap[payload.kode]) || 0) + parseFloat(stokFisik);
                 localStorage.setItem('rekapFisik_' + jobId, JSON.stringify(rekap));
 
-                simpanHistoriLokal(payload, actionType);
-                updateQueueUI();
-                resetFormKhusus();
+                simpanHistoriLokal(payload, actionType); updateQueueUI(); resetFormKhusus();
                 
             } else {
-                // Jika Mode EDIT: Karena ini operasi sensitif, biarkan menggunakan jalur lambat (sync to server)
                 status.innerText = "Menyimpan revisi..."; status.style.color = "#f39c12"; document.getElementById('btnSubmit').disabled = true;
                 
-                // Cek apakah item yang diedit masih ada di antrean? Jika iya, edit di antrean saja
                 let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
                 let qIndex = queue.findIndex(q => q.id === idTransaksi);
                 
                 if (qIndex !== -1) {
-                    queue[qIndex] = payload;
-                    localStorage.setItem('syncQueue_' + jobId, JSON.stringify(queue));
-                    simpanHistoriLokal(payload, actionType); resetFormKhusus();
+                    queue[qIndex] = payload; localStorage.setItem('syncQueue_' + jobId, JSON.stringify(queue));
+                    simpanHistoriLokal(payload, actionType); 
+                    
+                    if(globalHistoryView) klikItemSelisih(payload.kode); else resetFormKhusus();
                 } else {
-                    // Kalau sudah terkirim ke Google, terpaksa edit ke server
                     try {
                         let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify(payload) });
                         let result = await res.json();
                         if(result.status === 'success') {
-                            tarikRekapSiluman(); simpanHistoriLokal(payload, actionType); resetFormKhusus();
+                            tarikRekapSiluman(); simpanHistoriLokal(payload, actionType); 
+                            if(globalHistoryView) klikItemSelisih(payload.kode); else resetFormKhusus();
                         } else { status.innerText = "❌ Gagal revisi: " + result.message; status.style.color = "red"; }
                     } catch(e) { status.innerText = "❌ Error internet. Coba Kirim lagi."; status.style.color = "red"; }
                 }
@@ -544,7 +562,8 @@
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
             let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
             if(actionType === 'edit_scan') { let idx = histori.findIndex(h => h.id === data.id); if(idx !== -1) histori[idx] = data; } else { histori.unshift(data); }
-            localStorage.setItem('histori_' + jobId, JSON.stringify(histori)); renderHistori();
+            localStorage.setItem('histori_' + jobId, JSON.stringify(histori)); 
+            if(!globalHistoryView) renderHistori();
         }
 
         function filterHistori() { let keyword = document.getElementById('cariHistori').value.toLowerCase().trim(); renderHistori(keyword); }
@@ -560,7 +579,7 @@
                         <div class="histori-detail">
                             <strong>${h.nama}</strong>
                             <span>Kode: ${h.kode}</span><br>
-                            <span>Qty Fisik: <strong style="color:#d35400; display:inline;">${h.stokFisik}</strong> | ${h.waktu.split(' ')[1]}</span>
+                            <span>Qty Fisik: <strong style="color:#d35400; display:inline;">${h.stokFisik}</strong> | ${h.waktu.split(' ')[1] || h.waktu}</span>
                         </div>
                         <div class="histori-actions">
                             <button class="btn-edit" onclick="masukModeEdit('${h.id}')">Edit</button>
@@ -572,41 +591,60 @@
             document.getElementById('listHistori').innerHTML = html;
         }
 
-        function masukModeEdit(id) {
-            let jobId = document.getElementById('jobIdStaff').value.toUpperCase(); let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || []; let data = histori.find(h => h.id === id);
+        // UPDATE: Mode Edit membedakan dari mana asalnya (Global vs Lokal)
+        function masukModeEdit(id, isGlobal = false) {
+            let jobId = document.getElementById('jobIdStaff').value.toUpperCase();
+            let data = null;
+            
+            if (isGlobal && globalHistoryView) {
+                data = globalHistoryView.find(h => h.id === id);
+            } else {
+                let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || [];
+                data = histori.find(h => h.id === id);
+            }
+            
             if(data) {
                 document.getElementById('kodeBarang').value = data.kode; document.getElementById('namaBarang').value = data.nama;
                 let master = JSON.parse(localStorage.getItem('masterJob')) || []; let barang = master.find(b => b.kode === data.kode);
                 let rekap = JSON.parse(localStorage.getItem('rekapFisik_' + jobId)) || {}; let totalGlobal = rekap[data.kode] || 0;
                 let sisaTargetReal = barang ? (barang.kuantitas - (totalGlobal - data.stokFisik)) : data.stokSistem;
                 document.getElementById('sisaTarget').value = sisaTargetReal; document.getElementById('stokFisik').value = data.stokFisik;
-                editModeId = id; let btn = document.getElementById('btnSubmit'); btn.innerText = "Simpan Perubahan (Edit)"; btn.style.backgroundColor = "#f39c12";
-                document.getElementById('statusScan').innerText = "⚠️ Mode Edit Aktif"; document.getElementById('statusScan').style.color = "#f39c12";
+                
+                editModeId = id; 
+                editOriginalPic = data.pic; // Pengamanan akuntabilitas nama PIC asli
+                
+                let btn = document.getElementById('btnSubmit'); btn.innerText = "Simpan Perubahan (Edit)"; btn.style.backgroundColor = "#f39c12";
+                document.getElementById('statusScan').innerText = `⚠️ Mode Edit Aktif (Awal: ${data.pic})`; document.getElementById('statusScan').style.color = "#f39c12";
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
 
-        async function hapusDataServer(id) {
-            if(!confirm("Yakin ingin menghapus data ini?")) return;
+        async function hapusDataServer(id, isGlobal = false) {
+            if(!confirm("Yakin ingin menghapus data ini dari sistem?")) return;
             let btnDel = document.querySelector(`#item-${id} .btn-delete`); btnDel.innerText = "..."; btnDel.disabled = true;
             let jobId = document.getElementById('jobIdStaff').value.toUpperCase(); 
 
-            // Cek antrean lokal dulu
             let queue = JSON.parse(localStorage.getItem('syncQueue_' + jobId)) || [];
             let qIndex = queue.findIndex(q => q.id === id);
             if (qIndex !== -1) {
-                // Hapus dari antrean lokal saja (batal kirim ke server)
                 queue.splice(qIndex, 1); localStorage.setItem('syncQueue_' + jobId, JSON.stringify(queue));
                 let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || []; histori = histori.filter(h => h.id !== id); localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
-                filterHistori(); updateQueueUI();
+                
+                if(isGlobal) {
+                    globalHistoryView = globalHistoryView.filter(h => h.id !== id); renderGlobalHistori();
+                } else { filterHistori(); }
+                updateQueueUI();
             } else {
-                // Hapus dari server
                 try {
                     let res = await fetch(URL_GAS, { method: 'POST', body: JSON.stringify({ action: 'delete_scan', id: id, jobId: jobId }) });
                     let result = await res.json();
                     if(result.status === 'success') {
                         let histori = JSON.parse(localStorage.getItem('histori_' + jobId)) || []; histori = histori.filter(h => h.id !== id); localStorage.setItem('histori_' + jobId, JSON.stringify(histori));
-                        filterHistori(); tarikRekapSiluman();
+                        
+                        if(isGlobal) {
+                            let kode = document.getElementById('kodeBarang').value; klikItemSelisih(kode); 
+                        } else { filterHistori(); }
+                        tarikRekapSiluman();
                     } else { alert("Gagal menghapus: " + result.message); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
                 } catch(e) { alert("Error koneksi!"); btnDel.innerText = "Hapus"; btnDel.disabled = false; }
             }
@@ -614,6 +652,13 @@
 
         function flushForm() {
             document.getElementById('kodeBarang').value = ''; document.getElementById('namaBarang').value = ''; document.getElementById('sisaTarget').value = ''; document.getElementById('stokFisik').value = ''; document.getElementById('statusScan').innerText = ''; document.getElementById('autocompleteList').innerHTML = ''; 
+            
+            // RESET FITUR GLOBAL VIEW
+            globalHistoryView = null;
+            editOriginalPic = null;
+            document.getElementById('historiTitle').innerText = "Histori Input Sesi Ini";
+            filterHistori(); 
+            
             editModeId = null; let btnSubmit = document.getElementById('btnSubmit'); btnSubmit.innerText = "Kirim Data Fisik"; btnSubmit.style.backgroundColor = "#3db597"; btnSubmit.disabled = true;
             document.getElementById('kodeBarang').focus();
         }
